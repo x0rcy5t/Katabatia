@@ -1,0 +1,709 @@
+;
+;
+;spell/potion effects
+;
+;J.Ouellette
+;
+;
+
+affect_player	;akku holds effect #, tempy holds index to monster
+		;x holds inteligence of player or monster,0 if potion
+		;y = 1 if effect is from melee
+		;returns tempa with $ff if no message is to be printed
+	stx tempx
+affect_player_self		;entry for casting on self, x=0, tempx preloaded with int
+	sta tempa
+	lda #0
+	sta shop_flag
+	lda tempa
+	
+	cmp #0			;sleep
+	bne +
+	cpx #0
+	beq pot_s		;drank a potion, can't resist
+	jsr rnd
+	ldx resist		;armor/ring power
+	beq norssl
+	cpx #4			;wearing both ring and armor of resistance?
+	bne nodi
+	cmp #32			;1 in 8 chance if two items on
+	bcs resslep
+nodi	cmp #64			;1 in 4 chance if one
+	bcs resslep
+norssl	cmp #128		;1 in 2 chance if none
+	bcs resslep
+pot_s	ldx #5
+	jsr rndrange
+	adc tempx
+	sta sleep
+	jmp printplayereffect
+resslep	cpy #0			;no resist message if effect
+	beq m_s			;comes from enemy attack
+	jmp nomesge
+m_s	lda #<resisttxt
+	ldy #>resisttxt
+	jmp load_string
+
++	cmp #1			;fear
+	bne +			;no effect
+	jmp printplayereffect	
+	
++	cmp #2			;poison
+	bne +
+	cpx #0
+	beq pot_p		;potion, can't resist
+	jsr rnd
+	ldx resist		;armor/ring power
+	beq noresp
+	cpx #4			;wearing both ring and armor of resistance?
+	bne nodbl
+	cmp #32			;1 in 8 chance if two items on
+	bcs respoi
+nodbl	cmp #64			;1 in 4 chance if one
+	bcs respoi
+noresp	cmp #128		;1 in 2 chance if none
+	bcs respoi
+pot_p	jsr d20
+	beq pot_p
+	clc
+	adc tempx
+	cmp #35			;can not be over 35 
+	bcc n35
+	lda #35
+n35	sta poison
+	jmp printplayereffect
+respoi	cpy #0
+	beq m_p
+	jmp nomesge 
+m_p	lda #<resisttxt
+	ldy #>resisttxt
+	jmp load_string
+
++	cmp #3			;fire
+	bne +
+	ldx #10
+	jsr rndrange
+	adc tempx
+	adc #10
+	sta tempx
+	jsr intresist		;int reduces damage received tempx-(int/4)
+	lda hp
+	sec
+	sbc tempx
+	sta hp
+	beq firded
+	bcs nod
+firded	inc dead
+nod	jmp printplayereffect
+
++	cmp #4			;confusion
+	bne +
+	cpx #0
+	beq pot_c		;potion, can't resist
+	jsr rnd
+	ldx resist		;armor/ring power
+	beq norsco
+	cpx #4			;wearing both ring and armor of resistance?
+	bne nodb
+	cmp #32			;1 in 8 chance if two items on
+	bcs resconf
+nodb	cmp #64			;1 in 4 chance if one
+	bcs resconf
+norsco	cmp #128		;1 in 2 chance if none
+	bcs resconf
+pot_c	lda #5
+	sta confusion
+	jmp printplayereffect
+resconf	cpy #0
+	beq m_c
+	jmp nomesge
+m_c	lda #<resisttxt
+	ldy #>resisttxt
+	jmp load_string
+
++	cmp #5			;healing
+	bne +
+	jsr d20
+	clc
+	adc tempx		;monster int,player int, 0 for potion
+	adc #20
+	sta tempx
+	lda hp
+	clc
+	adc tempx
+	bcc nff
+	lda #$ff
+nff	sta hp
+	lda maxhp
+	cmp hp
+	bcs nhx
+	sta hp
+nhx	lda #$0
+	sta poison
+	sta blind
+	jmp printplayereffect
+
++	cmp #6			;blinding
+	bne +
+	sta mbli+1		;tempa acked by jsr reveal
+	cpx #0
+	beq pot_b		;potion, can't resist
+	jsr rnd
+	ldx resist		;armor/ring power
+	beq norb
+	cpx #4			;wearing both ring and armor of resistance?
+	bne nodub
+	cmp #32			;1 in 8 chance if two items on
+	bcs resbli
+nodub	cmp #64			;1 in 4 chance if one
+	bcs resbli
+norb	cmp #128		;1 in 2 chance if none
+	bcs resbli
+pot_b	ldx #10
+	jsr rndrange
+	adc #3
+	adc tempx
+	sta blind
+	lda tempy		;monster pointer is affected by reveal
+	pha
+	jsr reveal		;both in move.a
+	pla
+	sta tempy
+mbli	lda #$A0		;modded
+	sta tempa
+	jmp printplayereffect
+resbli	cpy #0
+	beq m_b
+	jmp nomesge
+m_b	lda #<resisttxt
+	ldy #>resisttxt
+	jmp load_string	
+	
++	cmp #7			;knowledge
+	bne +
+	ldx #0
+-	lda inventory+4,x
+	ora #%00000001
+	sta inventory+4,x
+	txa
+	clc
+	adc #5
+	tax
+	cpx #5*24
+	bne -
+	ldx #0
+-	lda inventory,x
+	inx
+	cmp #3
+	bne nopo	
+	lda inventory,x
+	tay
+	lda #$ff
+	sta unknowntable,y	;potion is now known
+nopo	txa
+	clc
+	adc #4
+	tax
+	cpx #5*24
+	bne -
+	
+	jmp printplayereffect
+	
++	cmp #8			;might
+	bne +
+	lsr tempx
+	ldx #6 
+	jsr rndrange
+	clc
+	adc tempx
+	adc #5
+	sta might
+	jmp printplayereffect
+	
++	cmp #9			;teleport
+	bne +
+	pha			;tempa and tempy is acked by jsrs
+	lda tempy
+	pha
+	lda monster+2 	
+	and #%11111100		;monster no longer holding player
+	sta monster+2
+	lda monster+8 	
+	and #%11111100
+	sta monster+8
+	lda monster+14	
+	and #%11111100
+	sta monster+14
+	lda monster+20	
+	and #%11111100
+	sta monster+20
+	lda monster+26	
+	and #%11111100
+	sta monster+26
+	lda monster+32	
+	and #%11111100
+	sta monster+32
+	ldy #0
+	lda under
+	sta (player),y		;erase player with under tile
+	jsr unreveal		;move.a
+	ldx #0
+	ldy #0
+	jsr find_empty		;in maze.a
+	lda (zpa),y
+	sta under		;get new under tile
+	lda zpa
+	sta player
+	lda zpb
+	sta player+1
+	jsr revealsk		;move.a
+	lda #0
+	ldy #0
+	sta (player),y		;put player graphic
+	lda player
+	sta zpa
+	lda player+1
+	clc
+	adc #$d0
+	sta zpb
+	lda #LTGREY
+	sta (zpa),y		;color player
+	pla
+	sta tempy
+	pla
+	sta tempa
+	jmp printplayereffect
+	
++	cmp #10			;lightning
+	bne +
+	lsr tempx
+	ldx #5 
+	jsr rndrange
+	adc tempx
+	sta tempx
+	jsr rndrange
+	adc tempx
+	sta tempx
+	jsr intresist		;reduce damage based on int
+	lda hp
+	sec
+	sbc tempx
+	sta hp
+	beq litded
+	bcs nod2
+litded	inc dead
+nod2	jmp printplayereffect
+	
++	cmp #11			;death
+	bne +
+	cpx #0
+	beq pot_d		;potion, can't resist
+	jsr rnd
+	ldy resist		;armor/ring power
+	beq norst
+	cpy #4			;two items on?
+	bne nodob
+	cmp #32
+	bcs resdeth
+nodob	cmp #64
+	bcs resdeth
+norst	cmp #128
+	bcs resdeth
+pot_d	lda saves		;ram.a/menu.a increased at altars
+	bne godsave
+	inc dead
+	lda #<deathtxt
+	ldy #>deathtxt
+	jmp load_string
+godsave	dec saves
+	lda #<savestxt
+	ldy #>savestxt
+	jmp load_string
+resdeth	jmp printplayereffect
+		
+
++	cmp #12			;bless
+	bne +
+	ldy #4
+	ldx #0
+	inc saves
+-	jsr prepare_item_pointer
+	lda equipped_weapon,x
+	bmi noeq
+	stx tempy
+	tax
+	jsr find_item		;inv.a
+	lda (itemlo),y
+	and #%01111111
+	sta (itemlo),y
+	ldx tempy
+noeq	inx
+	cpx #4
+	bne -
+	jmp printplayereffect
+	
++	cmp #13			;mana 
+	bne +
+	ldx #5
+	jsr rndrange
+	adc #10
+	adc sp
+	cmp maxsp
+	bcc nosp
+	lda maxsp
+nosp	sta sp
+	jmp printplayereffect
+
++	cmp #14			;armor melt
+	bne +
+	ldx equipped_armor
+	bpl melta
+	jmp nomesge
+melta	jsr find_item
+	ldy #2
+	lda (itemlo),y
+	bne meltit		;if +0 armor, it is destroyed.
+	jsr removearmoreffect	;menu.a
+	jsr erase_item		;inv.a
+	lda #$ff
+	sta equipped_armor
+	lda #<armortxt
+	ldy #>armortxt
+	jmp load_string
+meltit	sec
+	sbc #1
+	sta (itemlo),y
+	jmp printplayereffect
+
++	cmp #15			;arrow shot
+	bne +
+	lda #0
+	sta temps		;no player bonus in next jsr
+	jsr agility_check	;in move.a, carry clear = monster hits
+	bcc ahit
+	lda #<arrowmisstxt
+	ldy #>arrowmisstxt
+	jmp load_string
+ahit	ldy #0
+	ldx equipped_armor
+	bmi noarrowdef
+	jsr find_item
+	ldy #1
+	lda (itemlo),y
+	iny
+	clc
+	adc (itemlo),y
+	tay
+noarrowdef
+	sty tempr
+	ldx #16
+	jsr rndrange
+	clc
+	adc #5		;5-20 damage
+	sbc tempr	;minus armor
+	bcs arr0
+	lda #0
+arr0	sta tempx
+	lda hp
+	sec
+	sbc tempx
+	beq arrd
+	bcs arr1
+arrd	inc dead
+arr1	sta hp
+	jmp printplayereffect
+
+
++	cmp #16		;drain attack
+	bne +
+	lda tempz	;damage from successful hit
+	clc
+	adc tempmonster+1
+	sta tempmonster+1
+	ldx tempmonster
+	lda monster_hp,x
+	cmp tempmonster+1
+	bcs drx
+	sta tempmonster+1
+drx	jmp printplayereffect
+
++
+printplayereffect
+	lda #<player_effect_text
+	ldy #>player_effect_text
+affectout
+	ldx tempa
+	jmp findnextwordload	;inv.a
+	;rts
+	
+nomesge	lda #$ff
+	sta tempa
+	rts
+	
+intresist
+	lda antimagic		;armor/ring bonus
+	asl			;-4 or -8 damage
+	sta tempr
+	lda int			;reduce damage based on int/4
+	lsr
+	lsr
+	clc
+	adc tempr
+	sta tempr
+	lda tempx
+	sec
+	sbc tempr
+	bcs not0
+	lda #0
+not0	sta tempx
+	rts
+	
+;----------------------------------------------
+	
+affect_monster
+	stx tempx
+	sta tempa		;akku holds effect # sometimes tempx holds something
+	lda #0
+	sta shop_flag
+	lda tempa
+	cmp #0			;sleep
+	bne +
+	lda tempundead
+	beq nd1
+	jmp setnoeffect
+nd1	lda tempmonster+2 	;status flag %111111xx poison,sleep,confuse,blind,fear,chase
+	ora #%01000000
+	sta tempmonster+2
+	jmp printmonstereffect
+
++	cmp #1			;fear
+	bne +
+	lda tempundead
+	beq nd2
+	jmp setnoeffect
+nd2	lda tempmonster+2 	;status flag %111111xx poison,sleep,confuse,blind,fear,chase
+	and #%11111011		;chase off
+	ora #%00001000		;fear
+	sta tempmonster+2
+	jmp printmonstereffect	;no effect
+
++	cmp #2			;poison
+	bne +
+	lda tempundead
+	beq nd3
+	jmp setnoeffect
+nd3	lda tempmonster+2
+	ora #%10000000
+	sta tempmonster+2
+
+	jmp printmonstereffect
+
++	cmp #3			;fire
+	bne +
+	ldx #10
+	jsr rndrange
+	adc tempx
+	adc #10
+	sta tempx		;monster int,player int, 0 for potion
+m_damage
+	lda tempmonster+1
+	sec
+	sbc tempx
+	sta tempmonster+1
+	beq burn
+	bcs surv		;fire kill monster?
+burn	lda tempmonster+4	;get location
+	sta zpc
+	lda tempmonster+5
+	sta zpd
+	ldy #0
+	lda tempmonster+3	;replace with under tile
+	sta (zpc),y
+	jsr exp_gain		;in monster.a
+	lda #$ff
+	sta tempmonster
+surv	jmp printmonstereffect
+
++	cmp #4			;confusion
+	bne +
+	lda tempundead
+	beq nd4
+	jmp setnoeffect
+nd4	lda tempmonster+2 	;status flag %111111xx poison,sleep,confuse,blind,fear,chase
+	and #%11111011
+	ora #%00100000
+	sta tempmonster+2
+	jmp printmonstereffect
+
++	cmp #5			;healing
+	bne +
+	lda tempundead
+	beq nd5
+	bpl nd5
+	lda #10			;healing burns undead
+	jsr affect_monster	;use lighting routine
+	lda #<hurtundeadtxt
+	ldy #>hurtundeadtxt
+	jmp load_string
+nd5	ldx tempmonster
+	lda monster_hp,x
+	sta tempmonster+1
+	jmp printmonstereffect
+
++	cmp #6			;blinding
+	bne +
+	lda tempundead
+	beq nd6
+	jmp setnoeffect
+nd6	lda tempmonster+2 	;status flag %111111xx poison,sleep,confuse,blind,fear,chase
+	ora #%00010000
+	sta tempmonster+2
+	jmp printmonstereffect
+	
++	cmp #7			;knowledge
+	bne +
+	jmp printmonstereffect	;does nothing
+	
++	cmp #8			;might
+	bne +
+	jmp printmonstereffect
+
++	cmp #9			;teleport
+	bne +
+	lda tempy		;find_empty acks tempy
+	sta telemod+1
+	lda tempmonster+3	;undertile
+	ldy #0
+	sta (tempmonster+4),y
+	ldx #0
+	jsr find_empty
+	lda (zpa),y
+	sta tempmonster+3
+	lda tempmonster
+	clc
+	adc #230		;char offset
+	sta (zpa),y 
+	lda zpa
+	sta tempmonster+4
+	lda zpb
+	sta tempmonster+5
+	lda tempmonster+2	;status
+	and #%11111100		;remove flytrap hold status
+	sta tempmonster+2
+telemod	lda #$A0		;modded
+	sta tempy
+	jmp printmonstereffect
+	
++	cmp #10			;lightning
+	bne +
+	lsr tempx
+	ldx #5 
+	jsr rndrange
+	adc tempx
+	sta tempx
+	jsr rndrange
+	adc tempx
+	sta tempx
+	jmp m_damage
+	
++	cmp #11			;death
+	bne +
+	lda tempundead
+	beq nd7
+	jmp setnoeffect
+nd7     jsr d20
+	clc
+	adc tempx
+	sta tempx
+	jsr d20
+	ldx tempmonster
+	adc monster_def,x
+	cmp tempx
+	bcc printmonstereffect
+	lda tempmonster+1
+	sta tempa
+	jsr hurt_monster
+	lda #<monsterdeathtxt
+	ldy #>monsterdeathtxt
+	jmp load_string
+
++	cmp #12			;bless
+	bne printmonstereffect
+	lda tempundead
+	beq printmonstereffect
+	bmi printmonstereffect
+	lda #3			;fire
+	jsr affect_monster
+	lda #<hurtundeadtxt
+	ldy #>hurtundeadtxt
+	jmp load_string
+	
+-	jmp nomesge
+
+setnoeffect
+	cpy #0			;no message when melee attack
+	bne -			;fails to trigger effect
+	lda #13			;resist message
+	sta tempa	
+printmonstereffect
+	lda #<monster_effect_text
+	ldy #>monster_effect_text
+	jmp affectout		;rts above
+	
+	
+player_effect_text	
+	
+	!pet $fe,"are stunned!",0
+	!pet $fe,"shake off an uneasy feeling",0
+	!pet $fe,"feel sick",0
+	!pet $fc,"burns!",0
+	!pet "The room begins to spin",0
+	!pet "A healing light surrounds you",0
+	!pet "Everything goes dark",0
+	!pet "It all begins to make sense",0
+	!pet "What bulging muscles!",0
+	!pet "Suddenly you stand somewhere else",0
+	!pet "BZZZT! Ouch!",0
+	!pet $fe,"resist death's touch!",0
+	!pet "Your equipment ebbs with errie light",0
+	!pet $fe,"feel warm all over",0
+	!pet "Your armor melts!",0
+	!pet "You're struck by an arrow!",0
+	!pet "Your life is drained!",0
+	
+monster_effect_text
+	!pet "It's stunned!",0
+	!pet $fc,"cowers in fear",0
+	!pet $fc,"looks ill",0
+	!pet "Flames consume it!",0
+	!pet $fc,"looks disorientated",0
+	!pet $fc,"is healed!",0
+	!pet "It's blinded!",0
+	!pet $fc,"ponders",$fd,"meaning of",$fb,"all",0
+	!pet $fc,"shrugs off the liquid",0
+	!pet $fc,"vanishes!",0
+	!pet "Electricity courses through it!",0
+	!pet $fc,"shrugs off",$fd,"deadly energy",0
+	!pet "It's bathed in light!",0
+	!pet "Nothing happens",0
+	!pet $fe,"absorb its lifeforce",0
+		
+	
+deathtxt
+	!pet "Death's icy grip encircles you!",0
+savestxt
+	!pet "Divine favor repels the fatal energy",0
+armortxt
+	!pet "Your armor is destroyed!",0
+hurtundeadtxt
+	!pet "The light burns it!",0
+monsterdeathtxt
+	!pet $fc,"decays into ash",0
+resisttxt
+	!pet $fe,"resist!",0
+arrowmisstxt
+	!pet "An arrow whizzes by your head",0
+	
+
+
+

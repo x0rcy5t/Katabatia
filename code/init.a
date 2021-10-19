@@ -1,0 +1,905 @@
+;show title, load/new game selection
+;character creation
+;init varibles
+;J.Ouellette
+;----------------------------------------------
+
+init	
+			
+!if model = c64 {
+	
+	lda $ba			;device # program was loaded from
+	cmp #1			;was it tape
+	bne +
+	lda #8			;select drive 8 if loaded from tape
++	sta drive_number
+	
+	lda #$7f 
+	sta $dc0d		;disable cia timer
+	lda #$80
+	sta $291		;disable uppercase/lowercase toggle
+reinit	
+	lda #BLACK
+	sta CURSORCOLOR
+	jsr print_clear
+
+		
+	ldy #53			;inject code into ZP, unreveal breaks c16 build
+-	lda zpcode,y		;see move.a, unreveal routine
+	sta clearcode,y
+	dey
+	bpl -
+
+	sei
+
+	lda #21
+	sta $d018		;set to charrom and screen at $400
+	lda #<titleirq		;set up interrupt vector
+	sta $314
+	lda #>titleirq		;in main.a
+	sta $315
+			
+	lda #$ff		;rasterline
+	sta rasterline 
+	lda $d011
+	and #%00011111		;raster last bit
+	sta $d011
+	lda $dc0d 
+	lda $dd0d
+	lda #1
+	sta $d019
+	sta $d01a
+	lda #0
+	sta endpicflag
+	jsr titlemusic		;init title music
+	cli
+	
+;key_test	
+	;jsr waitforvblank
+	;lda #$20
+	;sta $400
+	;sta $401
+	;sta $402
+	;lda #0
+	;ldy #0
+	;ldx #0 
+	;jsr PLOT
+	;lda last_key
+	;jsr print_num
+	;jmp key_test
+	
+	
+;sfx test	  ; uncomment jsr playsfx in titleirq in main.a
+	;lda #0
+	;sta $400
+	;sta voc3
+	;jsr initsfx
+;dd	jsr waitforvblank
+	;inc voc3
+	;jsr check_button_tap
+	;bne +
+	;lda $400
+	;sta soundeffect
+;+	jsr check_up
+	;bne +
+	;inc $400
+;+	jsr check_down
+	;bne dd
+	;dec $400
+	;jmp dd
+	
+}	 
+!if model = c16 {
+	
+	lda #RED
+	sta CURSORCOLOR
+	jsr print_clear
+	
+reinit	sei
+
+	lda #<titleirq		;set up interrupt vector
+	sta $314
+	lda #>titleirq		;in main.a
+	sta $315
+		
+	lda #$02
+	sta $ff0a
+	lda #$ff		;rasterline
+	sta rasterline 
+	cli
+}
+	
+	lda #BLACK
+	sta BG_COLOR		;color
+	lda #DKGREY
+	sta BO_COLOR	
+	
+clearvaribles	     
+	lda #<start_of_file	;ramsym.a $c000
+	sta zpa
+	lda #>start_of_file
+	sta zpb
+	ldy #$0
+-	lda #$ff		;clear varibles
+	sta (zpa),y
+	jsr add1
+	lda zpa
+	cmp #<end_of_ff
+	bne -
+	lda zpb
+	cmp #>end_of_ff
+	bne -
+-	lda #$0
+	sta (zpa),y
+	jsr add1
+	lda zpa
+	cmp #<end_of_zero
+	bne -
+	lda zpb
+	cmp #>end_of_zero
+	bne -
+	
+!if model = c64 {	
+		
+showtitle
+	jsr print_clear
+	lda #<titledat	;get titlescreen string
+	ldy #>titledat
+	jsr showscreen
+	bcs titlemenu
+	
+showstory	
+	jsr print_clear
+	lda #<storydat	;get story string
+	ldy #>storydat	
+	jsr showscreen
+	bcs titlemenu
+
+showinstruct1	
+	jsr print_clear
+	lda #<instruct1dat
+	ldy #>instruct1dat	
+	jsr showscreen
+	bcs titlemenu
+	
+showinstruct2	
+	jsr print_clear
+	lda #<instruct2dat
+	ldy #>instruct2dat	
+	jsr showscreen
+	bcc showtitle
+	bcs titlemenu
+	
+	
+showscreen
+	jsr load_string ;in display.a
+	ldy #0
+-	lda (stringlo),y
+	beq +		;0=end of data
+	jsr CHROUT
+	cmp #$22	;did we just print a quote?
+	bne noqt
+	lda #0
+	sta $d4		;then turn off quote mode flag		
+noqt	jsr add1fd
+	bcc -		;branch always
++	jmp delaywait
+	
+delaywait		;delay before next screen
+	lda #0
+	sta tempa
+	sta tempx
+-	jsr waitforvblank
+	jsr check_button_tap
+	bne +
+	sec 
+	bcs firw
++	inc tempa
+	bne -
+	inc tempx
+	lda tempx
+	cmp #4		;delay time
+	bne -
+	clc
+firw	rts
+
+}
+
+titlemenu
+	jsr trap_button
+	lda #LTGREY
+	sta CURSORCOLOR
+	jsr print_clear
+	lda #14			;lowercase
+	jsr CHROUT
+	!if model = c64 {
+		lda #$18
+		sta $d018	;screen/char location $2000
+	}
+	jsr drawtitleborder	
+	jsr titleplot		;position cursor
+	lda #<titletxt
+	ldy #>titletxt
+	jsr load_print_string
+	;jmp start_game		;;;;;;;;;;;;;;;;;;;;;;
+show_title_menu			;init inital menu options
+	ldx #0
+	stx option
+	inx
+	stx option+1
+	stx tempa		;menu length
+	
+nexttmenu			;entry point after subroutine
+	ldx #0
+	stx select
+	ldx #10			;position cursor
+	stx tempy
+	ldy #16
+	clc
+	jsr PLOT
+	
+	lda #RED		;red text
+	sta txtcolor
+	sta CURSORCOLOR
+	
+	ldx #$ff		;print menu
+ttlo	inx
+	lda option,x		;get index from option list
+	stx tempx
+	tax
+	lda #<tmenutxt		;get menu text
+	ldy #>tmenutxt
+	jsr findnextwordload	;find string
+	jsr print_string
+	ldx tempy		;position cursor
+	inx
+	stx tempy
+	ldy #16
+	clc
+	jsr PLOT
+	ldx tempx
+	cpx tempa		;menu length
+	bne ttlo
+	lda #LTGREY		;lt grey pointer
+	sta CURSORCOLOR
+	jsr pointer		
+tmenuwait
+	jsr check_up
+	bne +
+	lda select
+	cmp #0
+	beq tmenuwait
+	dec select
+	jsr pointer
+	bmi tmenuwait
++	jsr check_down	
+	bne +
+	lda select
+	cmp tempa		;menu length
+	beq tmenuwait
+	inc select
+	jsr pointer		;reverse new selection
+	bmi tmenuwait
++	jsr check_button_tap
+	bne tmenuwait
+	jsr trap_button
+	ldx select
+	lda option,x
+	asl
+	tax
+	lda tmenujt,x
+	sta zpa			;load subroutine address
+	inx			;into the zeropage
+	lda tmenujt,x
+	sta zpb
+	jmp (zpa)		;and indirect jump to it
+	
+
+pointer
+	lda #32
+	sta TEXTSCREEN + $19f
+	sta TEXTSCREEN + $19f + 40
+	sta TEXTSCREEN + $19f + 80
+	sta TEXTSCREEN + $19f + 120
+	lda select
+	clc
+	adc #10
+	tax
+	ldy #15
+	jsr PLOT
+	lda #64		;'@'
+	jsr CHROUT
+	lda #$ff
+	rts
+
+;---------------------------------------------- 
+	
+new_game
+	jsr print_clear
+new_game_sk			;entry after i/o error
+	jsr drawtitleborder	;clears screen
+	jsr titleplot		;position cursor
+	lda #<classtxt
+	ldy #>classtxt
+	jsr load_print_string 
+	lda #5
+	sta option
+	lda #6
+	sta option+1
+	lda #7
+	sta option+2
+	lda #2
+	sta tempa		;menu length
+	jmp nexttmenu
+		
+load_game
+	lda #2
+	sta option
+	lda #3
+	sta option+1
+	lda #4
+	sta option+2
+	lda #2
+	sta tempa		;menu length
+	jmp nexttmenu
+
+;load_disk, load_tape in disk.a
+
+cancel_load
+	jmp titlemenu
+	
+choose_class
+	ldx select	;new game stats
+	stx class
+	lda sstr,x
+	sta str
+	lda sagi,x
+	sta agi
+	lda sint,x
+	sta int
+	lda shp,x
+	sta hp
+	sta maxhp
+	lda ssp,x
+	sta sp
+	sta maxsp
+	
+	cpx #0		;give items
+	bne +
+-	lda warrioritems,x
+	sta inventory,x
+	inx
+	cpx #15
+	bne -
+	lda #1
+	sta equipped_armor
+	bne commonstats
++	dex
+	bne +
+-	lda rogueitems,x
+	sta inventory,x
+	inx
+	cpx #15
+	bne -
+	lda #15
+	sta arrows
+	lda #1
+	sta equipped_bow
+	bne commonstats
++	dex
+-	lda magicianitems,x
+	sta inventory,x
+	inx
+	cpx #15
+	bne -
+	
+	
+commonstats		;common to all
+	;lda #6		;ration
+	;sta inventory + 10
+	lda #$70
+	sta player
+	lda #>MAPSCREEN
+	sta player+1
+	lda #200	
+	sta hunger
+	lda #5
+	sta restorerate
+	lda #8
+	sta restorerate+1
+	lda #6
+	sta hungerrate
+	lda #00
+	sta next+1
+	lda #20
+	sta next
+	lda #50
+	sta sacrifice
+	lda #0
+	sta gold
+	sta equipped_weapon
+	lda #1
+	sta fb_prompt_toggle
+	sta auto_pickup_toggle
+				
+	ldx #0
+	lda #$30	;petscii '0'
+-	sta exp,x	;clear experience/steps
+	inx
+	cpx #15
+	bne -
+	lda #1
+	sta explevel
+	lda #1		;*8*8*8*8*8*8*8 LEVEL
+	sta level
+	lda #$32	;set initial exp requirement
+	sta next+3
+	
+	lda #8
+	sta option
+	lda #9
+	sta option+1
+	lda #10
+	sta option+2
+	lda #11
+	sta option+3
+	lda #DKGREY
+	sta mapcolor
+	lda #3
+	sta tempa
+	jsr titleplot		;position cursor
+	lda #<godtxt
+	ldy #>godtxt
+	jsr load_print_string 
+	jmp nexttmenu
+
+choose_god
+	lda select
+	sta god
+	jsr print_clear
+	lda #LTGREY
+	jsr clear_color		;input name
+	jsr drawtitleborder
+
+nameloc = TEXTSCREEN + $178	;screen addresses
+lettergrid = TEXTSCREEN + $215	;upper left corner of letters
+
+entername
+	lda #0
+	sta playerx
+	sta playery
+	sta select
+	lda #64
+	sta case		;start in uppercase
+	
+	jsr titleplot
+	lda #<nametxt
+	ldy #>nametxt
+	jsr load_print_string
+	ldy #0
+nameloop
+	jsr print_lettergrid
+nameloopjoy	
+	jsr check_left
+	bne +
+	lda playerx
+	beq +
+	dec playerx
+	jmp nameloop
++	jsr check_right
+	bne +
+	lda playerx
+	cmp #7
+	beq +
+	inc playerx
+	jmp nameloop
++	jsr check_up
+	bne +
+	lda playery
+	beq +
+	dec playery
+	jmp nameloop
++	jsr check_down
+	bne +
+	lda playery
+	cmp #3
+	beq +
+	inc playery
+	jmp nameloop
++	jsr check_button_tap
+	bne nameloopjoy
+	jsr trap_button
+	lda (zpa),y
+	eor #$80
+	cmp #UPARROW		;uppercase
+	bne +
+	lda #64
+	sta case
+	bne nameloop
++	cmp #DOWNARROW		;lowercase
+	bne +
+	lda #0
+	sta case
+	beq nameloop
++	cmp #BACKARROW		;backspace
+	bne +
+	ldx select
+	beq sel0
+	dex
+sel0	lda #32
+	sta nameloc,x
+	stx select
+	jmp nameloop
++	cmp #CHECKMARK
+	beq savename
+	ldx select
+	cpx #8
+	beq +
+	sta nameloc,x
+	inx
++	stx select
+	jmp nameloop
+	
+savename
+	ldx #0
+naml	lda nameloc,x		;store entered name
+	ldy #4
+-	dey
+	cmp upperlimit,y
+	bcs -
+	eor flip,y		;screen code to petscii
+	sta name,x
+	inx
+	cpx #8
+	bne naml
+	
+	ldx #0
+-	lda fileprefix,x
+	sta filename,x
+	inx
+	cpx #5
+	bne -
+		
+	jmp start_game
+
+print_lettergrid
+	lda #1
+	clc
+	adc case
+	ldx #0
+-	sta lettergrid,x
+	clc
+	adc #1
+	inx
+	inx
+	cpx #16
+	bne -
+	ldx #0
+-	sta lettergrid+80,x
+	clc
+	adc #1
+	inx
+	inx
+	cpx #16
+	bne -
+	ldx #0
+-	sta lettergrid+160,x
+	clc
+	adc #1
+	inx
+	inx
+	cpx #16
+	bne -
+	sta lettergrid+240
+	clc 
+	adc #1
+	sta lettergrid+242
+	cmp #26			;lowercase z
+	beq +			;then print up arrow
+	lda #DOWNARROW
+	!byte $2c		;bit
++	lda #UPARROW
+	sta lettergrid+250
+	lda #BACKARROW
+	sta lettergrid+252
+	lda #CHECKMARK
+	sta lettergrid+254
+	lda #32
+	sta lettergrid+244
+	sta lettergrid+246
+	sta lettergrid+248
+	
+	lda #<lettergrid
+	sta zpa
+	lda #>lettergrid
+	sta zpb
+	ldx playerx
+	beq +
+-	jsr add1
+	jsr add1
+	dex
+	bne -
++	ldx playery
+	beq +
+-	jsr add40
+	jsr add40
+	dex
+	bne -
++	lda (zpa),y
+	eor #$80
+	sta (zpa),y
+	
+	ldx #8
+	lda #32
+-	sta nameloc+40,x	;underline name
+	dex
+	bpl -
+	ldx select		;cursor position
+	lda #UPARROW
+	sta nameloc+40,x
+	rts
+;----------------------------------------------
+
+start_game
+	lda god		;rnd seed based on name,class,and god
+	asl
+	asl
+	asl
+	ora class
+	eor #$ff
+	sta zpa
+	ldx #3
+-	lda name,x
+	eor zpa
+	sta sr1,x
+	dex
+	bpl -
+	lda name+5
+	adc sr1
+	sta sr1
+	lda name+6
+	adc sr1+1
+	sta sr1+1
+	lda name+7
+	adc sr2
+	sta sr2
+	lda name+8
+	adc sr2+1
+	sta sr2+1
+	
+	sec
+	lda sr1
+	sta mapseed+0
+	rol
+	eor sr2
+	sta mapseed+1
+	lda sr1+1
+	sta mapseed+2
+	rol
+	eor sr2+1
+	sta mapseed+3
+
+	lda class	;magician gets "random" book
+	cmp #2
+	bne +
+	ldx #10
+	jsr rndrange
+	sta inventory + 6
+	
++	ldy #0		;random table for potions
+-	ldx #11
+	jsr rndrange
+	tax
+	lda unknowntable,x
+	bpl -
+	tya
+	sta unknowntable,x
+	iny
+	cpy #11
+	bne -
+-	tya		;last 3 the same description every time
+	sta unknowntable,y
+	iny
+	cpy #14
+	bne -
+	
+	ldx #23			;set monster stats
+-	lda monster_hp_base,x
+	sta monster_hp,x	;into save file area
+	lda monster_atk_base,x
+	sta monster_atk,x
+	lda monster_int_base,x
+	sta monster_int,x
+	lda monster_agi_base,x
+	sta monster_agi,x
+	dex
+	bpl -
+
+
+start_loaded			;entry when game loaded from tape/disk
+
+	lda #<usr		;ramsym.a
+	sta zpa
+	lda #>usr
+	sta zpb
+	ldy #0
+-	lda #0			;clear ram work area
+	sta (zpa),y
+	jsr add1
+	lda zpa
+	cmp #<end_of_zero
+	bne -
+	lda zpb
+	cmp #>end_of_zero
+	bne -
+
+	lda txtcolor		;clear screen
+	sta animate
+	sta CURSORCOLOR
+	jsr print_clear
+	lda #0
+	jsr clear_map_color	;clear map color to make screen transition smooth
+	ldx #39
+	lda #0			;clear line of color
+-	sta COLOR,x
+	dex
+	bpl -
+	
+	sei
+	
+	lda #<irq	;set up interrupt vector
+	sta $314
+	lda #>irq
+	sta $315
+	
+!if model =  c64 {		  
+		  
+	lda #$01	;enable interupt
+	sta irqenable
+	lda #$ff	;rasterline
+	sta rasterline 
+	lda rasterhigh
+	and #%00011111	;enable interupt
+	sta rasterhigh
+	lda $dc0d 
+	lda $dd0d
+	lda #1
+	sta $d019
+}      
+  
+!if model =  c16 {
+
+	lda #$02
+	sta irqenable
+	lda #$da	;rasterline
+	sta rasterline 
+	
+}
+	lda #1
+	sta sfxtoggle
+	jsr ingamemusic ;init music
+		
+	cli
+	jsr make_maze	;maze.a, generate first level
+	jmp move_init	;move.a, begin game loop
+	
+;----------------------------------------------
+
+drawtitleborder
+	!if model = c16 {rts}
+	!if model = c64 {
+	ldy #0		;draw border
+	ldx #0
+	lda #$29
+	sta zpa
+	lda #>TEXTSCREEN
+	sta zpb
+	lda #$99
+	sta zpc
+	lda #$7
+	sta zpd
+	lda #125
+brloop1 sta (zpa),y	;draw top and bottom
+	sta (zpc),y
+	iny
+	cpy #37
+	bne brloop1
+	ldy #0
+	lda #$4
+	sta zpd
+	lda #$4e
+	sta zpc
+brloop2 jsr add40	;draw sides
+	jsr add40fd
+	lda #126
+	sta (zpa),y
+	sta (zpc),y
+	inx
+	cpx #21
+	bne brloop2
+	lda #127	;poke in corners
+	sta $429
+	sta $44e
+	sta $799
+	sta $7be
+	rts
+}	
+titleplot	
+	ldx #6		
+	ldy #15
+	clc
+	jmp PLOT	;position cursor
+	
+	
+;----------------------------------------------
+	
+titletxt
+	!pet 153,"KATABATIA",0 ;153=lt green
+classtxt
+	!pet 153,"Pick a Class",0
+godtxt
+	!pet 153,"Worship whom?",0
+nametxt
+	!pet 153,"Enter name",0
+fileprefix
+	!pet "s0:k."
+	
+	;starting stats
+	;warrior,rogue,magician
+
+sstr	!byte 4, 3, 3
+sagi	!byte 2, 3, 2
+sint	!byte 2, 2, 3
+shp	!byte 25,20,20
+ssp	!byte 0, 2, 5
+
+startingitems
+
+warrioritems
+	!byte $00,2,0,$ff,1
+	!byte $01,1,0,$ff,1
+	!byte $06,0,0,0,1
+rogueitems
+	!byte $00,1,1,2,1
+	!byte $05,0,0,$ff,1
+	!byte $06,0,0,0,1
+magicianitems
+	!byte $00,0,1,4,1
+	!byte $04,0,0,$ff,1	;random book
+	!byte $06,0,0,0,1
+
+upperlimit	
+	!byte 128,96,64,32
+flip	!byte 192,32,0,64	
+
+tmenutxt
+	!pet "New Game",0
+	!pet "Load Game",0
+	!pet "Disk load",0
+	!pet "Tape load",0
+	!pet "Cancel",0
+cltxt	!pet "Warrior",0
+	!pet "Rogue",0
+	!pet "Magician",0
+	!pet "Ingerham  Int +",0
+	!pet "Jeriel    Agi +",0
+	!pet "Jacek     Str +",0
+	!pet "Kim       HP/SP +",0
+
+tmenujt				;title menu jump table
+	!word new_game
+	!word load_game
+	!word load_disk
+	!word load_tape
+	!word cancel_load
+	!word choose_class
+	!word choose_class
+	!word choose_class
+	!word choose_god
+	!word choose_god
+	!word choose_god   ;10
+	!word choose_god
+	
+!eof	
+1 print "		{light gray}{cm +}{cm +}{gray}{cm pound} {cm +}{light gray}{cm +}{cm +}{cm pound}	 {cm pound}{gray}{cm pound} {124} {dark gray}{cm pound}{return}		    {gray}{cm +}{cm pound}{dark gray}{cm pound}{gray}{cm +}{cm +}{light gray}{cm +}{cm pound}	  {yellow}{110}{cm y}{cm y}{cm y}{109}	{light gray}{cm +}{gray}{124}{dark gray}{cm pound}{return}	     {gray}{cm +}{dark gray}{cm pound}		  {yellow}{cm g}   {cm m}   {light gray}{cm +}{gray}{cm pound}{cm pound} {124}{return}	       {dark gray}{cm pound}   {gray}{cm o}{reverse on}{cm u}{reverse off}{light gray}{cm o}	     {yellow}{109}   {110}    {light gray}{cm +}{return}       {dark gray}.    {reverse on}{gray}{cm v} {cm pound} {light gray} {reverse off}{cm f}  {reverse on}{light blue}{sh pound}	 {127}{reverse off}  {yellow}{109} {110} {dark gray}{cm pound}{gray}{124}  {light gray}{cm +}{gray}{124}{dark gray}{cm pound}{return}		{reverse on}{cm v}{gray} #  {light gray}{cm o}{reverse off}{cm v}  {light blue}{sh pound}{127}{sh pound}{127}  {reverse on}{yellow}{sh pound}{cm r}{127}{reverse off}	   {light gray}{cm +}{gray}{cm pound}{return}		{reverse on}{dark gray}{124}{gray}  {reverse off}{cm u}{white}{cm d} {cm v}  {reverse on}{green}{224}{224}{224}{224}{reverse off}  {reverse on}{yellow}{cm q}{white}{118}{yellow}{cm w}{reverse off} {light gray}{cm f}	   {cm +}{cm pound}{return}	      {dark gray}{cm +}{reverse on}{gray}  {reverse off}{cm p}{reverse on}{cm u} {light gray}{cm n}{reverse off} {reverse on}{gray}{sh pound}	 {127}{light gray}{cm j}{reverse off}{yellow}{127}{reverse on}{cm e}{reverse off}{sh pound}{light gray}{cm k}{cm k}	{cm pound}{return}	{white}{cm d}{reverse on}{125}{reverse off}{cm g}  {dark gray}:{reverse on}{gray}{124}	 {light gray}  {reverse off}{gray}/{reverse on}{cm +}{cm +}{cm pound}{cm pound}{cm +}{cm +}{reverse off}{109}{reverse on}{light gray}{cm f}{cm u}{cm v}{cm v}{gray}{cm i}{return}      {reverse on}{white}{cm j}{116}{reverse off}{cm k}  {dark gray}{104}{reverse on}{124}{gray}   {light gray}  {reverse off}{cm g}  {gray}##{light gray}{cm @}{reverse on}{cm u}  {cm b}{reverse off}{gray}{cm u}	    {124}{return}      {reverse on}{white}{cm m} {reverse off}	  {dark gray}{cm +}{reverse on}{124}{gray}{cm p}{cm o}{reverse off}{light gray}{cm u}  {cm @}{cm i}{reverse on} {reverse off}{cm b}{reverse on}	 {gray} {reverse off}{cm v}{dark gray}{109}  {gray}{124}      {124}{return}	{white}{cm m}{reverse on}{125}{reverse off}{cm k}     {dark gray}{cm pound}{reverse on}{gray}{cm pound}{cm pound} {light gray}{cm d}{cm y}   {cm k} {gray} {reverse off}{cm v}	{dark gray}{109}{return}     {reverse on}{white}{cm j}{cm h}{reverse off}    {dark gray}{cm pound}{reverse on}{cm y}{124}{gray}	  {light gray}{cm k}{cm pound}	 {gray}{cm k}{cm d}{reverse off}     {dark gray}.{return}     {reverse on}{white}{121}{cm l}{reverse off}   {reverse on}{dark gray}{cm v}{cm +}{reverse off}{124}{reverse on}{cm +} {gray} {reverse off}{cm k}{reverse on}{dark gray}{cm +}{gray}{cm pound}   {reverse off}{cm u}{return}   {pink}{116}{reverse on}{white}{cm k}{125}{reverse off}{cm g}  {reverse on}{dark gray}{cm v}{cm +}{cm +}{cm +}{cm pound}{gray}#  {reverse off}{dark gray}{cm c}{reverse on}{cm pound}{gray}{cm pound}{reverse off}{cm u}		    {124}{return}   {reverse on}{pink}{109}{white}{cm @}{cm h}{reverse off}  {reverse on}{dark gray}{cm b}{cm +}{cm v}{reverse off}{cm +}{124}{reverse on}{124}{gray}{cm pound}	  {reverse off}{cm i}{cm i}	       {dark gray}.{return}   {reverse on}{cm v}{cm pound}{pink}{114}{reverse off}{110}{dark gray}{cm pound}{reverse on} {cm pound}{cm v}{cm i}{reverse off}{cm +}{reverse on}{cm pound} {gray}	 {cm pound}  {reverse off}{124}{return}	  {reverse on}{dark gray} {cm v}{cm pound}{reverse off}{cm i}{reverse on}.{cm pound} {reverse off}{cm v}  {124}{reverse on}{cm pound}{gray}	{reverse off}{124}{return}  {pink}{121}{reverse on}{118}{dark gray}{cm pound} {cm v} {cm i}{reverse off}    {reverse on}{cm +}{124} {gray}    {reverse off}{124}		 {dark gray}.{return}	{pink}{101} {dark gray}{cm y}{cm y}	 {reverse on}{cm +}{cm @}{114}{102}{099}{gray}{100}{101}{reverse off}		     {dark gray}.{return}	      {cm +}{reverse on}{cm pound}    {gray} {reverse off}{124}{return}		    {reverse on}{dark gray}{cm j}{124}{cm pound}{gray}{cm +}{dark gray}{cm g}{124} {gray}{cm m}{return}		    {reverse on}{dark gray}{cm k}{cm +} {reverse off}{gray}{124}{reverse on}{dark gray}{cm k}{124}  {reverse off}{gray}{124}{return}		 {reverse on}{dark gray}{cm +}{cm +}{cm +}{reverse off}{gray}{124}{reverse on}{dark gray}{cm k}{cm +}  {cm m}{return}"
+

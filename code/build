@@ -1,0 +1,3 @@
+cd /mnt/sda2/c64tools/rogue/
+acme -v4 ./main.a
+x64 -autostart-delay-random -autostart /mnt/sda2/c64tools/rogue/katabatia.prg

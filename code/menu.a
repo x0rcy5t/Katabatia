@@ -1,0 +1,1860 @@
+;in-game menu
+;J.Ouellette
+;
+;
+;
+show_menu	;init inital menu options
+	ldx #0
+	stx shop_flag
+	stx boption
+	inx
+	stx boption+1
+	inx
+	stx boption+2
+	jsr menu_under		;last option set in move.a from undertile
+	jsr save_message
+	jsr recolor
+	
+nextmenu			;entry point after subroutine
+	;jsr clear_status	;sets up new menu options
+	
+	jsr clear_menu
+	
+	ldx #21			;position cursor
+	stx select
+	ldy #0
+	clc
+	jsr PLOT
+	
+	lda txtcolor		;red text
+	sta CURSORCOLOR
+	
+	ldx #0			;print menu
+mtlo	lda boption,x		;get index from option list
+	stx tempx
+	tax
+	lda #<menutxt		;get menu text
+	ldy #>menutxt
+	jsr findnextwordload	;find string
+	jsr print_string
+	ldx tempx
+	inx
+	cpx #4			;four line menu
+	beq +
+	jsr print_return
+	jmp mtlo
++	jsr trap_button		;in joy.a, wait for button release
+	lda #21
+	
+	jsr reverseline		;in inv.a
+menuwait
+	jsr check_up
+	bne +
+	lda select
+	cmp #21
+	beq menuwait
+	bne menuup
++	jsr check_down	
+	bne +
+	lda select
+	cmp #24
+	beq menuwait
+	jsr reverseline	;unreverse old selection
+	inc select
+	jsr reverseline	;reverse new selection
+	bmi menuwait
++	jsr check_button_tap
+	beq selectit
+	jsr check_left_menu
+	beq end_menu
+	lda last_key
+	cmp #$5f		;back arrow key
+	bne menuwait
+end_menu
+	jsr trap_left
+	jsr restore_message
+end_menu_sk			;exit from keyboard initiated commands that send messages
+	jsr print_status
+	jmp move_init
+	
+selectit
+	jsr reverseline	;unreverse selection
+	ldx select
+	lda option,x
+	asl
+	tax
+	lda menujt,x
+	sta zpa		;load subroutine address
+	inx		;into the zeropage
+	lda menujt,x
+	sta zpb
+	jmp (zpa)	;and indirect jump to it
+	
+menuup
+	jsr reverseline
+	dec select
+	jsr reverseline
+	bmi menuwait
+	
+	
+	
+;----------------------------------------------
+;menu entries
+;----------------------------------------------
+;sub menus
+
+inventory_menu
+	lda #7		;load in new menu options
+	sta boption
+	lda #8
+	sta boption+1
+	lda #9
+	sta boption+2
+	lda #17
+	sta boption+3
+	jmp nextmenu	;and show a new menu
+option_menu
+	lda #19
+	sta boption
+	lda #4
+	sta boption+1
+!if model = c64 {	
+	lda #5
+	sta boption+2
+	lda #23
+	sta boption+3
+	jmp nextmenu
+}
+!if model = c16 {	
+	lda #17
+	sta boption+2
+	bne blank3
+}
+
+save_game
+	lda #15
+	sta boption
+	lda #16
+	sta boption+1
+	lda #17
+	sta boption+2
+	bne blank3
+
+use_stairs
+	lda under
+	lda yend
+	bne +
+	lda #20		;confirm downstairs
+	bne fopt
++	lda #21		;confirm upstairs
+fopt	sta boption
+	lda #3		;save only on stairs
+	sta boption+1
+	lda #17
+	sta boption+2
+	bne blank3
+	
+quit_game
+	lda #17
+	sta boption
+	lda #14
+blank2	sta boption+1
+	lda #18
+	sta boption+2
+blank3	lda #18
+	sta boption+3
+	jmp nextmenu
+
+!if model = c64 {	
+display_menu
+	lda #6
+	sta boption
+	lda #24
+	sta boption+1
+	lda #25
+	sta boption+2
+	lda #17
+	sta boption+3
+	jmp nextmenu
+}	
+	
+;----------------------------------------------
+
+throw_item			;throwing/shooting
+	jsr clear_menu
+	lda equipped_bow
+	bmi throw		;no bow, select item to throw
+	lda arrows
+	beq throw		;no arrows, throw
+	lda #<shoottxt1		;prompt for direction
+	ldy #>shoottxt1
+	jsr load_print_message
+	lda #<shoottxt2
+	ldy #>shoottxt2
+	jsr load_print_message
+	jsr trap_button
+	jsr shootloop		;x holds direction if beq
+	bmi cancel_shoot
+	beq shootarrow
+throw	lda #1			;fire pressed, bring up inventory to select item to throw
+	jsr use_inventory       ;tempy now holds item used 
+	cmp #$ff		;item selection cancelled
+	bne +
+	jmp end_menu		;cancel throw
+
+cancel_shoot
+	jsr restore_message
+	jsr print_status
+	jsr playerpointers
+	jmp joymove
+	
++	jsr become_visible
+	lda #<throwtxt
+	ldy #>throwtxt
+	jsr load_print_message
+	jsr shootloop
+	bmi cancel_shoot
+	beq throwit
+	jsr trap_button
+	jmp end_menu
+	
+shootarrow
+	jsr become_visible
+	lda #8			;bow sound
+	jsr sfxwait
+	lda #9			;throw sound
+	jsr sfxwait
+	lda #$ff		;prepare registers for shoot subroutine
+	sta tempy		;$ff = arrow, otherwise item pointer
+	dec arrows
+	lda #0
+	sta tempx
+	lda player
+	ldy player+1
+	jsr shoot		;tempz now holds what tempy did
+	beq miss
+	jmp arrowhit
+	
+miss	jsr restore_message
+miss_sk	lda #<nohittxt
+	ldy #>nohittxt
+mis1	jsr load_print_message
+	jsr fire_button_prompt
+	jmp monster_turn
+
+	
+throwit stx tempx		;x is direction
+	jsr restore_message
+	ldy #0
+	lda (itemlo),y		;get type
+	cmp #7			;amulet of yendor
+	bne +			;can't throw away
+	jmp dropamulet		;in the code for drop item
++	ldx tempy		;the item thrown
+	jsr is_equipped		;throwing equipped item?
+	bne throk
+	jsr is_cursed		;can't throw equipped & cursed item
+	bne +
+	jmp dropcurse		;print message and exit
++	ldy #0
+	lda (itemlo),y		;get type
++	cmp #3			;set index based on item type			
+	bcc +
+	lda #3			;if not in that range it's a bow
++	tax
+	lda #$ff
+	sta equipped_weapon,x	;unequip
+	jsr removearmoreffect	;if necessary
+	
+throk	lda #9			;throw sound
+	jsr sfxwait
+	lda #0
+	ldx tempx		;direction
+	sta tempx		;player is shooting
+	lda player
+	ldy player+1
+	jsr shoot		;tempz now holds tempy (index into inventory)
+	bne +			
+	jsr erase_item
+	jmp miss
++	ldx tempz		;hold item index
+	jsr find_item		;jsr shoot screws (itemlo)
+	ldy #0
+	lda (itemlo),y
+	bne +
+	jmp throwweapon
++	cmp #3
+	bne +
+	jmp throwpotion
++	cmp #4
+	bne +
+	jmp throwpotion		;thrown book acts like potion
++	jsr erase_item
+	ldx #10
+	jsr rndrange		;everything else does 1-10 damage
+	adc #1
+	jmp projhurt
+	
+arrowhit
+	ldx equipped_bow
+	jsr find_item
+	lda #0
+	sta temps		;no agi penalty/bonus
+	jsr agility_check	;carry set = player hit
+	bcs +
+	jsr restore_message
+	lda #<shotmisstxt
+	ldy #>shotmisstxt
+	jmp mis1		;above, print message/end turn
+	
++	lda #1			;hit monster
+	jsr sfxwait
+	ldx equipped_bow	;agility check changes itemlo
+	jsr find_item
+	ldy #1
+	lda (itemlo),y		;dmg = 1 to 7 + bow power + agi/2 
+	sta tempa
+	ldx #8			;0-7
+	jsr rndrange
+	adc #1			;now 1-8
+	adc tempa
+	sta tempa
+	ldy #3
+	lda (itemlo),y		;bow of slaying?
+	bmi +
+	cmp tempmonster		;does it match monster type?
+	bne +
+	lda tempa		;slaying bonus damage
+	lsr			;base damage + base damage/2
+	adc tempa
+	sta tempa
+	
++	jsr is_cursed		;cursed?
+	bne +
+	lsr tempa		;halve weapon damage 
+	
++	lda agi			;add agility bonus
+	lsr
+	adc tempa
+	sta tempa
+	
+	ldx tempmonster
+	sec
+	sbc monster_def,x
+	bcs projhurt		;damage went below zero
+	lda #0			;set to zero
+projhurt
+	sta tempa
+	jsr restore_message
+pjh	jsr new_message
+	lda tempmonster+2
+	and #%10010111		;hit monsters recover from sleep, fear, and
+	sta tempmonster+2	;confusion
+	lda tempa
+	bne +			;zero damage, "fail" message
+	lda #<failtxt
+	ldy #>failtxt
+	jmp bltm
++	jsr hurt_monster
+	bcc +			;monster was killed
+	lda #<hittxt		;otherwise print "hit" message
+	ldy #>hittxt
+bltm	jsr load_string
+	lda tempmonster
+	sta tempx
+bltmd	jsr you_blank_the_monster
+	jsr save_monster	;saves tempmonster to list
+	jsr fire_button_prompt	;move.a
+	jmp monster_turn	
+
++	sty tempx		;print "killed" message
+	lda #<killtxt
+	ldy #>killtxt
+	jsr load_string
+	jmp bltmd
+	
+throwpotion
+	iny			;1
+	lda (itemlo),y		;potion type
+	pha
+	jsr erase_item		;inv.a
+	lda tempmonster+2
+	and #%10010111		;hit monsters recover from sleep, fear, and
+	sta tempmonster+2	;confusion
+	pla
+	ldy #0			;magic attack
+	ldx #0			;no INT bonus
+	jsr affect_monster
+	jsr print_message
+	
+	jsr save_monster	;monster.a
+	jsr fire_button_prompt	;move.a
+	jmp monster_turn
+
+throwweapon
+	iny
+	lda (itemlo),y		;weapon type
+	tax
+	jsr rndrange
+	sta tempa
+	iny
+	lda (itemlo),y		;+weapon bonus
++	adc tempa
+	ldx tempmonster
+	sec
+	sbc monster_def,x
+	bcs +
+	lda #0
++	sta tempa
+	jsr erase_item
+	beq pjh
+	
+shootloop
+	ldx #0
+	jsr check_right		;direction shoots arrow
+	beq shootok
+	inx
+	jsr check_up  
+	beq shootok
+	inx
+	jsr check_left
+	beq shootok
+	inx
+	jsr check_down
+	beq shootok
+	jsr check_button_tap
+	beq +
+	lda last_key
+	cmp #$5f		;back arrow key
+	bne shootloop
+	lda #$ff
+	bne shootok
++	lda #1			;button returns bne
+shootok rts
+;----------------------------------------------
+
+sound_toggle
+	jsr restore_message	
+	lda sfxtoggle
+	beq mus_on
+	bmi mute
+	jsr initsfx		;sfx on
+	ldx #0
+	lda #$80
+	bne +
+mus_on	jsr ingamemusic		;music on
+	ldx #1
+	txa
+	bne +
+mute	jsr ingamemusic		;zeros SID
+	ldx #2
+	lda #0
++	sta sfxtoggle
+	lda #<soundtxt
+	ldy #>soundtxt
+	jsr findnextwordload
+	jsr print_message
+	jsr print_status
+	jsr playerpointers
+	jmp joymove
+
+;----------------------------------------------
+
+
+inventory_look
+	jsr look_inventory	;in inv.a
+	jsr restore_message
+	jmp end_menu		;skips jsr reverse_line
+inventory_use
+	lda #2			;use menu
+	jsr use_inventory 	;loads itemlo vector
+	cmp #$ff		;cancelled/no item picked
+	bne +
+	jsr restore_message
+	jmp end_menu
+	
++	jsr become_visible
+	jsr restore_message
+	ldy #0
+	lda (itemlo),y
+	cmp #3
+	bcc equip
+	cmp #5
+	bne noteq		;not an equipable item
+	lda #3			;5 doesn't index, change to 3
+equip	;wear item, or remove worn item
+	tax
+	iny
+	lda (itemlo),y		;get weapon/armor base value
+	asl			;*2
+	sta tempr		;remember for str test
+	
+	lda tempy		;save inv index of selected item
+	sta tempa		;tempy used by find_item
+	lda equipped_weapon,x	;equipped items are in a list
+	stx tempz		;x is mangled in these jsrs
+	tax
+	bmi norepl		;$ff = nothing equipped
+	jsr find_item
+	jsr is_cursed		;is currently equiped item cursed?
+	bne +
+	jmp dropcurse		;can't remove or unequip
++	jsr removearmoreffect	;if item is to be replaced is armor
+norepl	ldx tempz		;remember x
+	lda tempa
+	cmp equipped_weapon,x	;if item selected is one equiped, remove it.
+	bne goeq
+	
+uneq	sta tempx		;now tempa gets roughed up
+	lda #$ff		;remove item
+	sta equipped_weapon,x
+	lda #<removetxt
+	ldy #>removetxt
+	jmp eqdone
+	
+goeq	cpx #2			;weapon or armor?
+	bcs str_test_ok		;no strength test for bows/rings
+	ldy tempr		;remember base power x 3
+	cpy str			;compare to strength
+	bcc str_test_ok
+	beq str_test_ok
+	lda #<heavytxt
+	ldy #>heavytxt
+	jsr load_print_message
+	jmp monster_turn
+str_test_ok
+	sta equipped_weapon,x
+	tax
+	jsr find_item
+	jsr addarmoreffect	;if needed
+	lda #<equiptxt
+	ldy #>equiptxt
+eqdone	jsr load_print_message
+	jsr new_message
+	jsr print_item
+	jsr scroll_message
+	jmp monster_turn
+	
+noteq	cmp #6		;food
+	bne notfood
+	ldx #50
+	jsr rndrange
+	adc #200
+	adc hunger		;add between 200-250 to hunger
+	bcc +
+	lda #$ff		;max
++	sta hunger
+	jsr erase_item		;clears entry on inv list
+	lda #<yumtxt
+	ldy #>yumtxt
+	jmp end_menu_turn
+notfood	cmp #3			;potion
+	bne notpotion
+	;jsr restore_message
+	jsr new_message
+	lda #<drinktxt
+	ldy #>drinktxt
+	jsr load_print_string
+	jsr print_item
+	jsr scroll_message
+	ldy #1
+	lda (itemlo),y
+	tax
+	lda #$ff
+	sta unknowntable,x	;potion now known
+	jsr erase_item
+	txa
+	ldx #0			;bonus/potion flag
+	ldy #0
+	jsr affect_player	;spell effect on player, in effect.a
+	jmp end_menu_turn_sk	;skips jsr load_string
+
+	
+spellfizzle
+	lda #7			;spell fizzle sound			
+	jsr sfxwait
+	lda #0
+	sta sp
+	lda #<nosptxt
+	ldy #>nosptxt
+	jmp end_menu_turn
+
+notpotion
+	cmp #4			;book
+	beq +
+	jmp notbook
++	ldy #1
+	lda (itemlo),y		;get book type
+	tay
+	lda sp			;enough spell points?
+	cmp spcost,y		;inv.a
+	beq +
+	bcc spellfizzle
++	sec			;spell can be cast
+	sbc spcost,y
+	sta sp
+	tya
+	pha			;remember spell type
+	lda #5			;spell cast sound
+	jsr sfxwait
+	lda #<spell1txt
+	ldy #>spell1txt
+	jsr load_print_message
+	lda #<spell2txt
+	ldy #>spell2txt
+	jsr load_print_message
+	jsr shootloop		;returns bne = fire, x direction
+	beq notatself		;direction pressed
+	lda #6			;spell fired sound
+	jsr sfxwait
+	pla			
+	ldy #0
+	ldx int
+	stx tempx
+	ldx #0
+	jsr affect_player_self	;skips initial 'stx tempx'
+	jsr print_message
+	jsr fire_button_prompt
+	jmp monster_turn
+	
+notatself
+	lda #6			;spell fired sound
+	jsr sfxwait
+	lda #$ff		;prepare registers for shoot subroutine
+	sta tempy		;$ff = arrow, otherwise item pointer
+	lda #0
+	sta tempx
+	lda player
+	ldy player+1
+	jsr shoot
+	bne spellhit
+	pla			;don't need it, but pop before end
+	jmp miss_sk		;skips jsr_restore message, above in shoot/throw 
+	
+spellhit
+	pla
+	ldx int
+	ldy #0		;magic attack
+	jsr affect_monster
+	jsr print_message
+	jsr save_monster
+	jsr fire_button_prompt
+notyendor	
+	jmp monster_turn
+
+notbook	cmp #7		;amulet, using tells distance from stairs
+	bne notyendor
+	lda under	;stairs under player?
+	cmp #STAIRS
+	bne +
+	lda #0
+	beq dist0
++	ldy #3
+-	lda monster,y	;monsters' under tile
+	cmp #STAIRS
+	beq m_on_stair
+	tya
+	clc
+	adc #6
+	tay
+	cpy #33
+	bne -
+	beq +
+m_on_stair
+	iny
+	lda monster,y
+	tax
+	iny
+	lda monster,y
+	bne getdist	;always, screen loc hi never 0	
++	lda #$54
+	sta zpa		;amulet tells distance to stairs
+	lda #>MAPSCREEN
+	sta zpb
+	ldx #16
+yenlp	ldy #0
+-	lda (zpa),y	;scan map for char
+	cmp #STAIRS
+	beq +
+	iny
+	cpy #40
+	bne -	
+	jsr add40
+	dex
+	bpl yenlp
+	
++	tya
+	clc
+	adc zpa
+	tax
+	lda zpb
+	adc #0
+getdist	jsr get_object_xy	
+	stx zpa		
+	sty zpb
+	sec
+	lda playerx	;get xy and subtract player
+	sbc zpa
+	bcs +
+	eor #$ff	;abs
+	adc #1
++	sta zpa		;x distance
+	sec
+	lda playery
+	sbc zpb
+	bcs +
+	eor #$ff
+	adc #1
++	clc
+	adc zpa		;x+y distance
+dist0	sta zpa
+	jsr restore_message
+	jsr new_message
+	lda #<yendortxt1
+	ldy #>yendortxt1
+	jsr load_print_string
+	lda zpa
+	jsr print_num
+	lda #<yendortxt2
+	ldy #>yendortxt2
+	jsr load_string
+	jsr finish_message
+	jmp monster_turn
+
+;--------------------------------------
+;drop item
+
+blessitem
+	dey			;bless potion poured
+	lda (zpc),y		;+1 bonus power
+	clc
+	adc #1
+	sta (zpc),y
+	jmp pourit
+	
+dropon	lda #$10		;pour potion sound
+	jsr sfxwait
+	ldy #1
+	lda (zpa),y
+	sta tempa		;remember potion type
+	jsr erase_item
+	sta tempy;?
+	jsr find_floor_item	;item on ground into zpc
+	iny
+	iny
+	iny
+	ldx tempa
+	cpx #12			;bless potion?
+	beq blessitem		;add 1 to power instead
+	lda under
+	cmp #WEAPON
+	beq +
+	lda armoreffect,x	;in inv.a
+	sta (zpc),y
+	bcs poured		;set from last compare
++	lda weaponeffect,x
+	sta (zpc),y
+poured	iny
+	lda (zpc),y		;ident flag
+	and #$80		;clear ident, preserve curse if any
+	sta (zpc),y
+pourit	ldx #2
+	bne dropout
+
+;----enter here
+inventory_drop
+	lda #0
+	jsr use_inventory
+	cmp #$ff		;item selection cancelled
+	bne +
+	jmp end_menu
+
++	jsr become_visible
+	jsr restore_message
+	ldy #0			;check if clear to drop
+	lda (itemlo),y
+	ldx under
+	cpx #WEAPON
+	beq potiondrop
+	cpx #ARMOR
+	beq potiondrop
+	cpx #RING
+	bne noton
+potiondrop
+	cmp #3			;dropping a potion?
+	beq dropon		;pour potion over equipment
+dropblock 			;print blocked text
+	ldx #5
+	!byte $2c
+dropamulet			;print "why?"
+	ldx #4
+	!byte $2c
+dropcurse 			;print cursed text
+	ldx #3
+	
+dropout	lda #<droptxt
+	ldy #>droptxt
+	jsr findnextwordload
+	jmp end_menu_turn_sk
+	
+noton	cpx #ALTAR		;on an altar?
+	bne notonaltar
+	cmp #7			;dropping amulet on altar?
+	bne potalt
+	jmp sacrifice_amulet
+	bne potalt
+potalt	cmp #3			;dropping potion on altar?
+	beq potionchange
+	lda #<godnametxt
+	ldy #>godnametxt
+	ldx god
+	jsr findnextwordload
+	jsr new_message
+	jsr print_string
+	lda #<altarblocktxt
+	ldy #>altarblocktxt
+	jsr load_string
+	jsr finish_message
+	jmp monster_turn
+potionchange			;altar changes potion
+	lda #$0f
+	sta soundeffect
+	lda sacrifice		;increase sacrifice cost a little
+	clc
+	adc #10
+	bcc +
+	lda #$ff
++	sta sacrifice
+	ldy #1
+	lda (itemlo),y
+	tax
+	lda altaredpotion,x
+	sta (itemlo),y
+	tax
+	lda unknowntable,x	;new potion known?
+	bmi +
+	lda #00			;not identified
+	ldy #4
+	sta (itemlo),y
++	ldx #7
+	bne dropout
+notonaltar	
+	cmp #7			;can't drop amulet
+	beq dropamulet
+	
+	cpx #FLOOR		;under = corridor floor
+	beq eqck
+	cpx #ROOMFLOOR		;or room floor
+	beq eqck
+	bne dropblock		;otherwise can't drop
+	
+eqck	ldx #0
+-	lda equipped_weapon,x   ;dropping equipped item?
+	cmp tempy 		;the inventory entry index, saved from find_item
+	bne nxeq
+	jsr is_cursed
+	bne +
+	jmp dropcurse
++	lda #$ff
+	sta equipped_weapon,x
+	txa
+	pha			;save x
+	jsr removearmoreffect	;does nothing if not armor or ring
+	pla
+	tax
+nxeq	inx
+	cpx #4
+	bne -
+	
+	ldy #0
+	sty tempx
+	jsr find_open		;in maze.a, find empty entry on floor list
+	bcc +
+	inc tempx		;no space on list, item destroyed later	
++	ldx tempx
+-	lda (zpa),y		;get from inventory list
+	cpx #1			;skip saving to floor?
+	beq +
+	sta (zpc),y		;store to floor list
++	lda #$ff
+	sta (zpa),y		;and erase item from inventory
+	iny
+	cpy #5			;five elements
+	bne -
+	lda player		;last two bytes get player's screen location 
+	sta (zpc),y
+	lda player+1
+	iny
+	sta (zpc),y
+	cpx #1			;list full. "falls through crack"
+	beq +
+	ldy #0
+	lda (zpc),y		;get item type
+	!if model = c16 {
+		tax
+		lda item_char,x
+	}
+	!if model = c64 {
+		clc
+		adc #91		;char offest for items
+	}	
+	sta under		;put under player
+	ldx #0
+	jmp dropout
++	ldx #1
+	jmp dropout
+
+
+pick_up_item
+	jsr find_floor_item
+	bne +			;no item under, only happens with keyboard
+	jsr restore_message
+	jsr new_message
+	lda #<noitemheretxt
+	ldy #>noitemheretxt
+	jsr load_print_message
+	jmp end_menu_sk
++	sty tempy
+	lda #0
+	sta shop_flag
+	jsr prepare_item_pointer;find open slot in inventory
+	sec			;returns with a = itemlo
+	sbc tempy
+	sta itemlo		;knock off y offset
+	lda itemhi
+	sbc #0
+	sta itemhi
+	
+	ldx #23
+-	lda (itemlo),y		;(inv-floorpointer),floorpointer, or '0'
+	bmi +			;$ff is empty slot
+	lda #5			;list is 5 bytes wide
+	jsr adda		;adds a to zpa/zpb(itemlo)
+	dex
+	bpl -
+	lda #<invfulltxt
+	ldy #>invfulltxt
+	jmp end_menu_turn	;print message
+	
+	!byte $fa,$fa,$fa
+	
++	ldx #0
+pik	lda (zpc),y
+	sta (itemlo),y		;zpa
+	iny
+	inx
+	cpx #5			;copy 5 bytes
+	bne pik
+
+	lda tempy
+	tay
+	jsr adda
+	jsr delete_floor_item
+	
+	jsr restore_message
+	lda #<yougetthetxt
+	ldy #>yougetthetxt
+	jsr load_print_message
+	jsr new_message			;new line
+	
+	lda #FLOOR
+	sta under
+	jsr print_item
+	ldy #0
+	lda (itemlo),y
+	cmp #7		;amulet of yendor? 
+	bne +
+	lda #STAIRS	;stairs open if picked up
+	sta MAPSCREEN+$2f2
+	inc yend	;flag to reverse stair direction
+	lda #$11	;collect yendor sfx
+	jsr sfxwait
++	jsr scroll_message
+	jmp monster_turn	
+
+removearmoreffect
+	lda #$fe
+	!byte $2c	;bit
+addarmoreffect
+	lda #2
+	sta armod+1
+	ldy #0
+	lda (itemlo),y
+	beq a_out
+	cmp #3		;ring or armor
+	bcs a_out
+	ldy #3
+	lda (itemlo),y
+	bmi a_out	;no special power
+	tax
+	clc
+armod	lda #$a0
+	adc armoreffects,x
+	sta armoreffects,x
+a_out 	rts
+;----------------------------------------------
+	
+close_door
+	lda under
+	cmp #OPENDOOR
+	beq cl_ok
+	jsr restore_message
+	lda #<nodoortxt
+	ldy #>nodoortxt
+	jsr load_string
+	ldx #2
+	lda under
+	cmp #CLOSEDDOOR
+	beq +
+	dex
+	cmp #BROKENDOOR
+	beq +
+	dex
++	jsr findnextword
+	jsr print_message
+	jmp end_menu_sk
+cl_ok	jsr become_visible
+	lda #$0d	;close door sound
+	jsr sfxwait
+	lda #CLOSEDDOOR
+	sta under
+	lda #<closetxt
+	ldy #>closetxt
+end_menu_turn		;restore menu & print message
+	jsr load_string
+end_menu_turn_sk	;skip load
+	jsr restore_message
+	jsr print_message
+	jmp monster_turn
+
+;----------------------------------------------
+	
+switch_gfx
+!if model = c64 {
+	lda char	;if first byte of char data is 0
+	beq gfxon	;then game is in txtmode
+	ldx #7
+-	lda ptxt,x
+	sta char,x
+	dex
+	bpl -
+	
+	ldx #0 
+-	lda itxt,x
+	sta itemchar,x
+	inx
+	cpx #80 
+	bne -
+	
+	lda #<otxt
+	ldx #>otxt
+otherin	sta zpa
+	stx zpb
+	lda #<otherchar
+	ldx #>otherchar
+	sta zpc
+	stx zpd
+	ldx #32 
+nxtxt	ldy #7
+-	lda (zpa),y
+	sta (zpc),y
+	dey
+	bpl -
+	lda #8
+	jsr adda
+	lda #8
+	jsr addafd
+	dex
+	bpl nxtxt
+	lda char
+	beq +
+	jsr wallgraphics	
++	jmp end_menu	
+	
+gfxon	ldx #7
+-	lda pgfx,x
+	sta char,x
+	dex
+	bpl -
+	ldx #0 
+-	lda igfx,x
+	sta itemchar,x
+	inx
+	cpx #80 
+	bne -
+	lda #<ogfx
+	ldx #>ogfx
+	jmp otherin
+	
+}
+
+
+;----------------------------------------------
+
+use_stairs_key
+	lda yend	;have amulet?
+	bne +
+	inc level
+	bne st_ct
++	dec level
+	bpl st_ct
+	
+stairs_down
+	inc level
+	bne st_ct	
+stairs_up
+	dec level
+st_ct	lda #0			;step sound
+	jsr sfxwait
+	lda #$14			;a pause
+	jsr sfxwait
+	lda #0
+	jsr sfxwait
+	lda #$14
+	jsr sfxwait
+	lda #0
+	jsr sfxwait
+	jsr restore_message
+	jsr make_maze
+	jmp move_init
+;----------------------------------------------
+use_altar_key
+	lda under
+	cmp #ALTAR
+	beq use_altar_sk
+	;jsr restore_message
+	lda #<noaltartxt
+	ldy #>noaltartxt
+	jsr load_print_message
+	jsr playerpointers
+	jmp joymove
+use_altar
+	jsr restore_message
+use_altar_sk
+	jsr become_visible
+	lda #<godnametxt
+	ldy #>godnametxt
+	ldx god
+	jsr findnextwordload
+	jsr new_message
+	lda gold
+	beq nogold
+	lda #$0e		;sacrifice gold sound
+	jsr sfxwait
+	lda sacrifice
+	sec
+	sbc gold
+	beq sac
+	bcs noreward
+	eor #$ff		;remainder
+	clc
+	adc #1
+sac	sta gold
+	ldx rank
+	cpx #8
+	bcc +
+	ldx #7
++	lda rankcost,x
+	sta sacrifice
+	jsr print_string
+	lda #<pleasedtxt
+	ldy #>pleasedtxt
+	jsr load_string
+	jsr finish_message
+	ldx god			;increase stats
+	cpx #3
+	beq spmpgod
+	inc int,x
+	bne +
+spmpgod inc maxsp
+	inc maxsp
+	inc maxhp
+	inc maxhp
+	inc maxhp
+	
++	lda #12			;bless
+	jsr affect_player	;effect.a
+	jsr print_message
+	lda #7			;ident items
+	jsr affect_player	
+	jsr print_message
+	lda maxhp
+	sta hp
+	inc rank
+	jmp monster_turn
+	
+noreward
+	sta sacrifice
+	lda #0
+	sta gold
+nogold	jsr print_string
+	lda #<demandstxt
+	ldy #>demandstxt
+	jsr load_string
+	jsr finish_message
+	jmp monster_turn
+;----------------------------------------------
+sacrifice_amulet
+	lda rank		;must have enough favor with god
+	cmp #7
+	bcc +
+	lda #$12		;sacrifice amulet sound
+	jsr sfxwait
+	
+	jsr erase_item
+	jsr restore_message
+	lda #<sac1txt
+	ldy #>sac1txt
+	jsr print_fire
+	lda #<sac2txt
+	ldy #>sac2txt
+	jsr print_fire
+	lda #<sac3txt
+	ldy #>sac3txt
+	jsr print_fire
+	lda #<sac4txt
+	ldy #>sac4txt
+	jsr print_fire
+	inc challenge
+	lda #21
+	sta level
+	jsr make_maze
+	jmp move_init
+
++	lda #<sacnotxt
+	ldy #>sacnotxt			;havent made enough sacrifices
+	jmp end_menu_turn	
+	
+;----------------------------------------------	
+print_fire
+	jsr load_print_message
+	jmp fire_button_prompt
+;----------------------------------------------
+status	
+	jsr txt_screen_on	;save color, clear screen,raster split off, in inv.a
+statusend			;entry point for endgame	
+	ldx #2			
+	ldy #13
+	clc
+	jsr PLOT		;position cursor
+	lda #RED
+	sta CURSORCOLOR
+	jsr print_name		;name
+	ldx #3
+	ldy #13
+	clc
+	jsr PLOT
+	lda #<expleveltxt	;experience level
+	ldy #>expleveltxt
+	jsr load_print_string
+	lda explevel
+	jsr print_num
+	jsr print_space
+	lda #<cltxt		;class
+	ldy #>cltxt
+	ldx class
+	jsr findnextwordload
+	jsr print_string
+	
+	
+	lda #PURPLE
+	sta CURSORCOLOR
+	ldx #4
+	ldy #13
+	clc
+	jsr PLOT
+	ldx rank
+	cpx #8
+	bcc +
+	ldx #7
++	lda ranktab,x
+	tax
+	lda #<ranktxt		;display religious rank
+	ldy #>ranktxt
+	jsr findnextwordload
+	jsr print_string
+	jsr print_of
+	lda #<godnametxt
+	ldy #>godnametxt
+	ldx god
+	jsr findnextwordload
+	jsr print_string
+	
+	ldx #6			
+	ldy #12
+	clc
+	jsr PLOT
+	jsr print_hp		;hit points
+	lda #47			;'/'
+	jsr CHROUT
+	lda maxhp
+	jsr print_num
+	
+	ldx #7
+	ldy #12
+	clc
+	jsr PLOT
+	jsr print_sp		;spell points
+	lda #47			;'/'
+	jsr CHROUT
+	lda maxsp
+	jsr print_num
+	
+	lda #CYAN
+	sta CURSORCOLOR
+	
+	ldx #9 			;stats
+	ldy #13
+	clc
+	jsr PLOT
+	lda #<strtxt		;strength
+	ldy #>strtxt
+	jsr load_print_string
+	lda str
+	jsr print_num
+	
+	ldx #10
+	ldy #13
+	clc
+	jsr PLOT
+	lda #<agitxt		;agility
+	ldy #>agitxt
+	jsr load_print_string
+	lda agi
+	jsr print_num
+	
+	ldx #11
+	ldy #13
+	clc
+	jsr PLOT
+	lda #<inttxt		;intellegence
+	ldy #>inttxt
+	jsr load_print_string
+	lda int
+	jsr print_num
+	
+	lda #YELLOW
+	sta CURSORCOLOR
+	
+	ldx #13
+	ldy #13
+	clc
+	jsr PLOT
+	lda #<exptxt		;experience
+	ldy #>exptxt
+	jsr load_print_string
+	
+	ldx #0
+-	lda exp,x
+	jsr CHROUT
+	inx
+	cpx #5
+	bne -
+	
+	ldx #14			;position cursor
+	ldy #13
+	clc
+	jsr PLOT
+	lda #<nexttxt
+	ldy #>nexttxt
+	jsr load_print_string
+	
+	ldx #0
+-	lda next,x
+	jsr CHROUT
+	inx
+	cpx #4
+	bne -
+	lda #$30
+	jsr CHROUT
+	
+	lda #RED
+	sta CURSORCOLOR
+	ldx #17		;position cursor
+	ldy #13
+	clc
+	jsr PLOT
+	lda #<turns	;ram.a
+	ldy #>turns
+	jsr load_print_string
+	lda #<turnstxt
+	ldy #>turnstxt
+	jsr load_print_string
+	
+	lda yend		;game ended in victory?
+	bmi +
+	and #1
+	sta tempx
+	
+	lda #MEGREY		;print dungeon level
+	sta CURSORCOLOR
+	ldx #20
+	ldy #13
+	clc
+	jsr PLOT
+	lda #<dleveltxt
+	ldy #>dleveltxt
+	jsr load_print_string
+	lda level
+	cmp #21			;special challenge level?
+	bne st_nl		;normal level
+	lda #<qmarkstxt
+	ldy #>qmarkstxt
+	jsr load_print_string
+	beq no_aoy		;amulet was sacrificed to get to level
+st_nl	jsr print_num
+	lda tempx
+	beq no_aoy		;carrying amulet?
+	lda #YELLOW
+	sta CURSORCOLOR
+	ldx #21
+	ldy #13
+	clc
+	jsr PLOT
+	lda #<haveyendtxt
+	ldy #>haveyendtxt
+	jsr load_print_string
+no_aoy	
+	lda txtcolor
+	sta CURSORCOLOR
+	lda dead		;game over?
+	bne +
+	jsr status_trap		;in inv.a, traps joystick then restores game screen
+	jmp end_menu
++	rts
+
+save_confirm
+
+no_confirm
+	rts
+change_map_col
+	!if model = c64 {
+	jsr clear_menu
+	jsr trap_button
+	lda #<colorchangetxt
+	ldy #>colorchangetxt
+	jsr load_print_string
+mapcollp
+	jsr check_up
+	bne +
+-	inc mapcolor
+	lda mapcolor
+	and #%00001111
+	beq -
+	jsr change_map_color
++	jsr check_down
+	bne +
+-	dec mapcolor
+	lda mapcolor
+	and #%00001111
+	beq -
+	jsr change_map_color
++	jsr check_button_tap
+	bne mapcollp
+	jmp end_menu
+	}
+change_txt_col
+	!if model = c64 { 
+	jsr clear_menu
+	jsr trap_button
+	lda #<colorchangetxt
+	ldy #>colorchangetxt
+	jsr load_print_string
+txtcollp
+	jsr check_up
+	bne +
+-	inc txtcolor
+	lda txtcolor
+	and #%00001111
+	beq -		;no black txt
+	jsr recolor
++	jsr check_down
+	bne +
+-	dec txtcolor
+	lda txtcolor
+	and #%00001111
+	beq - 
+	jsr recolor
++	jsr check_button_tap
+	bne txtcollp
+	}
+	jmp end_menu
+	
+recolor	lda txtcolor
+	ldx #39
+-	sta COLOR + (40*24),x
+	sta COLOR + (40*23),x
+	sta COLOR + (40*22),x
+	sta COLOR + (40*21),x
+	dex
+	bpl -
+	rts
+	
+;----------------------------------------------
+enter_shop_key
+	lda under
+	cmp #SHOP
+	beq enter_shop
+	jsr restore_message
+	lda #<noshoptxt
+	ldy #>noshoptxt
+	jsr load_print_message
+	jsr playerpointers
+	jmp joymove
+	
+enter_shop
+	lda #1
+	sta shop_flag
+	lda #$ff
+	jsr use_inventory	;in inv.a
+	cmp #$ff
+	beq end_shop 		;no item chosen
+	lda itemlo		;save item chosen
+	sta zpc
+	lda itemhi
+	sta zpd
+	
+	ldx tempy		;index of selected item, set in use_inventory
+	lda gold
+	sec
+	sbc shop_price,x	;enough money?
+	bcs +
+	lda #<toopoortxt
+	ldy #>toopoortxt
+	jmp end_menu_turn
+	
++	sta tempx		;preserve gold result of buying
+	ldy #0
+	lda (itemlo),y
+	cmp #8			;buying arrows?
+	beq buy_arrows
+	tya
+	sta shop_flag		;find open slot in inventory
+	jsr prepare_item_pointer
+	ldx #23
+;	ldy #0
+-	lda (itemlo),y
+	bmi +			;$ff is empty slot
+	lda #5			;list is 5 bytes wide
+	jsr adda		;adds a to zpa/zpb(itemlo)
+	dex
+	bpl -
+	lda #<invfulltxt
+	ldy #>invfulltxt
+	jmp end_menu_turn
+
++	lda tempx		;open slot ok, update gold amount
+	sta gold
+	
+	ldy #4			;put in inventory
+-	lda (zpc),y
+	sta (itemlo),y
+	lda #$ff
+	sta (zpc),y		;and remove from shop
+	dey
+	bpl -
+	jsr purchase_msg
+	jmp monster_turn
+	
+	
+end_shop
+	jmp end_menu		;skips jsr reverse_line
+
+buy_arrows
+	lda arrows
+	cmp carrymax+1		;quiver capacity
+	bne +
+	lda #<quivertxt		;"quiver full" message, in move.a
+	ldy #>quivertxt
+	jmp end_menu_turn
+		
++	iny			;y = 1
+	lda (itemlo),y		;how many arrows
+	clc
+	adc arrows
+	cmp carrymax+1
+	bcc +
+	lda carrymax+1
++	sta arrows
+	jsr purchase_msg
+	ldy #0
+	lda #$ff
+	sta (itemlo),y		;delete arrows from shop
+	jmp monster_turn
+
+purchase_msg
+	jsr restore_message
+	lda #<purchasetxt
+	ldy #>purchasetxt
+	jsr load_print_message
+	jsr new_message
+	jsr print_item
+	jmp scroll_message	;rts
+;----------------------------------------------
+;
+;projectile code, spells, arrows, enemy distance attacks
+;
+;entry values:
+;tempmonster holds attacking monster if player is target
+;a = screen address, y = $0b screen address, x = direction
+;tempx = 0 = monster is target, tempx = 1 = player is target
+;tempy, item thrown, arrow = $ff, holds monster index when used by monster.
+;returns 0 on miss
+;returns 1 on hit and hit monster in tempmonster if player is shooting. Range is always 5.
+;
+
+shoot
+	sta zpc
+	sty zpd
+	lda #6
+	sta tempz		;loop counter, range+1
+	ldy #0
+shloop 
+	lda tempx		
+	beq hitmonsters
+-	jsr projadd		
+	lda (zpc),y
+	dec tempz
+	beq nohit		;out of range
+	cmp #WALL
+	beq nohit
+	cmp #CLOSEDDOOR
+	beq nohit
+	cmp #0		
+	bne -			;player at screen address?
+	lda #1			;bne = hit
+	rts
+hitmonsters
+	jsr projadd		;player shooting
+	lda (zpc),y
+	dec tempz		
+	beq nohit
+	cmp #WALL
+	beq nohit
+	cmp #CLOSEDDOOR
+	beq nohit
+	jsr check_for_monsters	;in move.a, carry clear = monster at location
+	bcs hitmonsters
+	lda tempy		;holds item if used, set in use_inventory
+	sta tempz		;tempy is used set in next jsr
+	jsr find_monster	;tempmonster and tempy set in load_monster, monster.a
+	lda #1			;bne = hit
+nohit	rts
+	
+projadd clc
+	lda zpc
+	adc dirtablelo,x
+	sta zpc
+	lda zpd
+	adc dirtablehi,x
+	sta zpd
+	rts
+	
+dirtablelo
+	!byte $01,$d8,$ff,$28	;+1,-40,-1,+40
+dirtablehi
+	!byte $00,$ff,$ff,$00	;right,up,left,down
+
+;----------------------------------------------
+	
+clear_menu	
+	ldy #$a0		;space+$80
+	!byte $2c
+save_message			;preserve bottom 4 lines of text
+	ldy #$20		;space
+	ldx #0
+-	tya
+	bmi +
+	lda TEXTSCREEN+$348,x
+	sta temp_message,x
+	tya
++	and #%01111111
+	sta TEXTSCREEN+$348,x
+	inx
+	cpx #160 
+	bne -
+	rts
+
+save_message_no_erase		;preserve without erasing
+	ldx #0
+-	lda TEXTSCREEN+$348,x
+	sta temp_message,x
+	inx
+	cpx #160 
+	bne -
+	rts	
+	
+restore_message		;restore text to bottom 4 lines
+	ldx #0
+-	lda temp_message,x
+	sta TEXTSCREEN+$348,x
+	lda txtcolor
+	sta COLOR+$348,x
+	inx
+	cpx #160 
+	bne -
+	rts
+	
+;----------------------------------------------
+;jump table and strings for menus
+;----------------------------------------------
+	
+menujt				;menu jump table
+	!word throw_item
+	!word inventory_menu
+	!word option_menu
+	!word save_game
+	!word quit_game
+	!word sound_toggle
+	!word switch_gfx
+	!word inventory_look
+	!word inventory_use
+	!word inventory_drop
+	!word close_door
+	!word use_stairs
+	!word pick_up_item
+	!word save_confirm
+	!word reinit		;in init.a
+	!word disk_save
+	!word tape_save
+	!word end_menu
+	!word end_menu
+	!word status
+	!word stairs_down
+	!word stairs_up
+	!word use_altar
+	!word display_menu
+	!word change_txt_col
+	!word change_map_col
+	!word enter_shop
+
+menutxt	!pet "Throw/Shoot",0
+	!pet "Inventory",0
+	!pet "Options",0
+	!pet "Save Game",0
+	!pet "Quit Game",0
+	!pet "Sound Toggle",0
+	!pet "GFX/Text",0
+	!pet "Inspect Inventory",0
+	!pet "Use/Equip Item",0
+	!pet "Drop Item",0
+	!pet "Close Door",0
+	!pet "Use Stairs",0
+	!pet "Pick Up",0
+pretxt	!pet "Ready device and press fire",0
+	!pet "Confirm Quit",0
+	!pet "Save to Disk",0
+	!pet "Save to Tape",0
+	!pet "Cancel",0
+	!pet " ",0
+	!pet "Status",0
+	!pet "Go Down",$fd,"Stairs",0
+	!pet "Go Up",$fd,"Stairs",0
+	!pet "Sacrifice of Gold",0
+	!pet "Display Options",0
+	!pet "Change Text Color",0
+	!pet "Change Map Color",0
+	!pet "Enter Shop",0
+
+; some text located in move.a as well	
+shoottxt1 
+	!pet "Select direction to shoot arrow,",0
+shoottxt2
+	!pet "or press fire to throw an item",0
+throwtxt
+	!pet "Direction (throw) or fire (cancel)",0
+nohittxt
+	!pet $fe,"don't hit anything",0
+shotmisstxt
+	!pet "The arrow sails wide.",0
+nothrow	
+	!pet $fe,"don't throw it",0
+spell1txt
+	!pet $fe,"focus your magical energies",0
+spell2txt
+	!pet "Direction (target) or fire (self)",0
+nosptxt	!pet $fe,"exaust your energy to no avail",0
+noitemheretxt
+	!pet "There is nothing to get",0
+yougetthetxt
+	!pet $fe,"get",$fd,0
+yougettxt
+	!pet $fe,"get ",0
+droptxt	!pet $fe,"drop",$fb,0
+falltxt	!pet $fc,"falls down a crack in",$fd,"floor",0
+pourtxt	!pet "The item absorbs",$fd,"magic liquid",0
+cursetxt
+	!pet "Cursed! Can't remove!",0
+whytxt	!pet "It's too precious to drop",0
+blocktxt
+	!pet "There is already something here",0
+altarblocktxt
+	!pet " doesn't want your junk",0
+potionaltartxt
+	!pet "Light swirls through the potion",0
+removetxt 
+	!pet $fe,"stop using",$fd,0
+equiptxt 
+	!pet $fe,"ready",$fd,0
+heavytxt
+	!pet "It's too heavy!",0
+yumtxt
+	!pet "Yum!",0
+drinktxt 
+	!pet $fe,"drink",$fd,0
+purchasetxt
+	!pet $fe,"purchase the",0
+toopoortxt
+	!pet $fe,"don't have enough gold!",0
+noshoptxt
+	!pet "There's no shop here",0
+noaltartxt
+	!pet "There's no altar here",0	
+yendortxt1
+	!pet "A distant voice whispers '",0
+yendortxt2
+	!pet " more'",0
+soundtxt
+	!pet "SFX on",0
+	!pet "Music on",0
+	!pet "Sound off",0
+colorchangetxt 
+	!pet "Color Up/Down, Fire Selects",0
+pleasedtxt 
+	!pet " is pleased",0
+demandstxt 
+	!pet " demands more",0
+	
+ranktxt	!pet "Follower",0
+	!pet "Devotee",0
+	!pet "Acolyte",0
+	!pet "Apostle",0
+	!pet "Avatar",0
+		
+	
+ranktab	!byte 0,0,1,1,2,2,3,4
+
+rankcost !byte 50,50,75,75,75,75,100,100
+	
+
+sac1txt	!pet "The earth shakes; distant screams echo",0
+sac2txt	!pet $fe,"hear a booming voice!",0
+sac3txt	!pet "'",$fe,"have proven yourself worthy...'",0
+sac4txt	!pet "'Come meet my challenge...'",0
+
+sacnotxt
+	!pet $fe,"haven't the spiritual power...",0
+	
+expleveltxt
+	!pet "Level ",0
+exptxt	!pet "Exp:",0
+nexttxt	!pet "Next:",0
+strtxt	!pet "STR:",0
+agitxt	!pet "AGI:",0
+inttxt	!pet "INT:",0
+dleveltxt
+	!pet "On dungeon level ",0
+qmarkstxt
+	!pet "??",0
+haveyendtxt
+	!pet "Carrying the Amulet",0

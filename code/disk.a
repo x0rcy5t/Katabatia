@@ -1,0 +1,528 @@
+;disk/tape operations, a lot of this from
+;compute's ML routines for C64 & 128 
+;J.Ouellette
+SETLFS = $ffba
+SETNAM = $ffbd
+OPEN = $ffc0
+CLOSE = $ffc3
+CHKIN = $ffc6
+CLRCHN = $ffcc
+CHRIN = $ffcf
+LOAD = $ffd5
+SAVE = $ffd8
+
+
+
+prepare_device
+	jsr clear_map_color
+	lda #1
+	sta screen
+	lda txtcolor
+	sta CURSORCOLOR
+	jsr print_clear
+	lda player
+	sta location
+	lda player+1
+	sta location+1
+	lda #<pretxt
+	ldy #>pretxt
+	jsr load_print_string
+-	jsr waitforvblank
+	jsr check_button_tap
+	bne -
+	rts
+	
+tape_save
+	jsr prepare_device	;a message prompt
+	lda #1			;device 1, tape drive
+	sta tempx
+	bne save_file
+	
+disk_save
+	jsr prepare_device
+	lda drive_number
+	sta tempx		;device 8, disk drive
+	lda #15			;open the error channel
+	tay
+	ldx tempx
+	jsr SETLFS
+	lda #0
+	jsr SETNAM
+	jsr OPEN
+	
+save_file
+	ldx #1
+	ldy #0
+	clc
+	jsr PLOT
+	jsr restore_cia		;reenable defualt CIA irqs
+		
+	lda #<start_of_file
+	sta zpa
+	lda #>start_of_file
+	sta zpb
+	lda #1
+	ldx tempx	;device
+	ldy #1		;save start address
+	jsr SETLFS
+	
+	ldx level
+	stx tempy
+	lda yend
+	beq +
+	dex
+	dex
++	inx
+	stx level
+	
+	lda tempx
+	cmp #1
+	bne dsave
+	lda #10		;length of filename	
+	ldx #<tapename
+	ldy #>tapename
+	jsr SETNAM
+	jmp tsave
+dsave
+	;lda $d011
+	;and #%11101111
+	;sta $d011	;VIC off
+scratch_file		;disk only, avoid save and replace bug
+	lda #1
+	ldx tempx
+	ldy #15
+	jsr SETLFS	;SETLFS, prepare file to open
+	lda #13
+	ldx #<filename
+	ldy #>filename
+	jsr SETNAM	;set the filename
+	jsr OPEN 	;open file
+	lda #1		;drive recives "s0:filename"
+	jsr CLOSE	;close the now scratched file
+	jsr CLRCHN	;clear the channels	
+	lda #12
+	ldx #<filename+1;exclude disk command in filename
+	ldy #>filename+1
+	jsr SETNAM
+tsave	
+	lda #$0a
+	ldx #<end_of_file
+	ldy #>end_of_file
+	jsr SAVE
+	bcs ioerror
+	lda tempx
+	cmp #1
+	beq +
+	jsr diskcheck	;read error channel
+	bcs ioerror
++	lda #<savedtxt
+	ldy #>savedtxt
+	jsr load_string
+	jmp savedone
+ioerror lda #<errortxt
+	ldy #>errortxt
+	jsr load_string
+	lda tempy
+	sta level	;error saving, no change in level
+	jsr restore_map_color
+savedone
+	lda #15
+	jsr CLOSE	;done with error channel
+	jsr CLRCHN
+	
+	sec
+	jsr restore_raster	;done with CIA, back to custom raster irq       
+	jsr waitforvblank
+	;lda #0
+	;sta screen
+	
+;	jsr restore_message
+	jsr print_message
+	lda tempy
+	cmp level		;new level, or save fail?
+	beq +
+	jsr make_maze	
++	jsr waitforvblank
+	lda #0
+	sta screen
+	jmp move_init
+
+;----------------------------------------------
+;----------------------------------------------	
+	
+diskcheck		;check for disk error
+	ldx #15
+	jsr CHKIN
+	jsr CHRIN
+	jsr CHROUT
+	asl
+	asl
+	asl
+	asl
+	sta tempa
+	jsr CHRIN
+	jsr CHROUT
+	and #%00001111
+	ora tempa
+	sta tempa
+	cmp #$20
+	rts		;returns carry clear if no error
+
+;----------------------------------------------
+	
+restore_cia
+	sei		;disable custom interrupts 
+	lda #<irqreturn 	
+	sta $314
+	lda #>irqreturn	;default IRQ handler
+	sta $315
+	!if model = c64 {
+	lda #$81	;cia timer on 
+	sta $dc0d
+	lda #$0
+	sta $d01a	;disable raster irq
+	}
+	!if model = c16 {
+	lda #$ff
+	sta irqregister
+	lda #$a1
+	sta rasterline
+	}
+	cli
+	jsr initsfx	;silence sid
+	rts
+
+restore_raster
+	
+	sei		;restore custom interrupts
+	
+	lda #<irq	
+	sta $314
+	lda #>irq
+	bcs +
+	lda #<titleirq	
+	sta $314
+	lda #>titleirq
++	sta $315
+
+	!if model = c64 {
+	lda #$7f	;cia timer back off 
+	sta $dc0d
+	lda #1
+	sta $d01a	;restart raster irq
+	lda #$da	;rasterline
+	sta $d012 
+	lda $dc0d	;aknowledge all irqs 
+        lda $dd0d
+        lda #0
+        sta $d019
+        }
+        !if model = c16 {
+        lda #$ff	;rasterline
+	sta rasterline
+	sta irqregister
+	}
+	cli
+	rts
+	
+;----------------------------------------------	
+	
+load_disk		;print directory menu
+	jsr print_clear
+	;jsr restore_cia
+	jsr titlemusic	;silence music
+	lda #15		;open the error channel
+	tay
+	ldx drive_number
+	jsr SETLFS
+	lda #0
+	jsr SETNAM
+	jsr OPEN
+	lda #1
+	ldx drive_number
+	ldy #0
+	jsr SETLFS
+	lda #6
+	ldx #<dirfile 	;filename "$0:k.*"
+	ldy #>dirfile
+	jsr SETNAM
+	jsr OPEN
+	
+	jsr diskcheck
+	bcs direrr
+		
+	lda #<filenames	;where to store gathered file names
+	sta zpc
+	lda #>filenames
+	sta zpd
+	ldy #0
+	sty tempx	;number of entries found
+	sty tempa	;quote flag (save petscii filename)
+	
+	ldx #1
+	jsr CHKIN
+	ldx #0
+-	jsr CHRIN	;skip load address 
+	inx 		;and disk label
+	cpx #27
+	bne -
+	
+newent  jsr chlink	;check for double zero entry
+	beq exitdir	;00 = end of directory
+	lda #13
+	jsr CHROUT	;new line
+	inc tempx
+	lda tempx
+	cmp #22
+	beq exitdir	;only 22 entries allowed
+	jsr get2	;skip block size
+-	jsr CHRIN
+	beq newent	;0 = end of entry
+	cmp #$22	;quote
+	beq quotetoggle
+	ldx tempa	;within quotes?
+	beq -
+	sta (zpc),y	;save petscii file name
+	jsr CHROUT
+	jsr add1fd
+	bcc -
+
+quotetoggle
+	lda tempa
+	beq +
+	lda #0
+	sta (zpc),y
+	sta tempa
+	jsr add1fd
+	bcc -
++	inc tempa
+	bne -
+	
+direrr	lda #<errortxt
+	ldy #>errortxt
+	jsr load_print_string
+
+exitdir	lda #1
+	jsr CLOSE
+	lda #15;
+	jsr CLOSE;
+	jsr CLRCHN
+	jmp dirmenu
+
+chlink	jsr CHRIN
+	sta zpa
+	jsr CHRIN
+	ora zpa
+	rts
+	
+get4	jsr get2	
+get2	jsr CHRIN
+	jmp CHRIN
+	
+nofile	jsr drawtitleborder	;init.a
+	lda #19			;home
+	jsr CHROUT
+	lda #<nofilestxt
+	ldy #>nofilestxt
+	jsr load_print_string
+	jmp show_title_menu
+	
+dirmenu	ldx tempx		;entries left
+	cpx #2
+	beq nofile
+	dex
+	stx tempx
+	lda #2			;now that directory is printed,
+	sta select		;use it as a menu
+	jsr reverseline 	;in inv.a
+	lda #19			;home
+	jsr CHROUT
+	lda #<choosetxt
+	ldy #>choosetxt
+	jsr load_print_string
+	lda #<filenames
+	sta stringlo
+	lda #>filenames
+	sta stringhi
+	jsr trap_button
+	
+dirmenuloop
+	lda select
+	jsr check_up		;called from menu.a
+	bne +
+	lda select
+	cmp #2
+	beq dirmenuloop
+	jsr reverseline
+	dec select
+	jsr reverseline
+	bmi dirmenuloop
++	jsr check_down	
+	bne +
+	lda select
+	cmp tempx		;menu length
+	beq dirmenuloop
+	jsr reverseline		;unreverse old selection
+	inc select
+	jsr reverseline		;reverse new selection
+	bmi dirmenuloop
++	jsr check_left_menu
+	beq x_dmenu
+	lda last_key
+	cmp #$5f		;back arrow key
+	bne +
+x_dmenu	jsr trap_left		
+	jmp titlemenu		;canceled
++	jsr check_button_tap
+	bne dirmenuloop		;file picked, else loop
+
+	inc MAPSCREEN	;;;;;;
+
+	jsr titlemusic		;silence music again
+	
+	lda select		;file selected 
+	sec
+	sbc #2
+	tax
+	jsr findnextword
+	lda zpc
+	sec
+	sbc #2			;make room for "0:"
+	sta zpa
+	lda zpd
+	sbc #0
+	sta zpb
+	ldx #0
+	ldy #0
+-	lda (zpc),y
+	beq +
+	jsr add1fd
+	inx
+	bne -		
++	
+	inx		;file length + "0:"
+	inx
+	stx tempx
+	
+	lda #48		;pet '0'
+	sta (zpa),y
+	iny
+	lda #58		;pet ':'
+	sta (zpa),y
+	
+	lda #0
+	sta MAPSCREEN	;;;;;;
+	
+	lda #15		;open the error channel
+	tay
+	ldx drive_number
+	jsr SETLFS
+	lda #0
+	jsr SETNAM
+	jsr OPEN
+	
+	inc MAPSCREEN	;;;;;;
+	
+	lda #2
+	ldx drive_number
+	ldy #0
+	jsr SETLFS
+	
+	;jsr print_clear
+	inc MAPSCREEN	;;;;;;
+	
+	lda tempx
+	ldx zpa
+	ldy zpb
+	jsr SETNAM
+	
+	inc MAPSCREEN	;;;;;;
+
+	lda #0
+	ldx #<start_of_file
+	ldy #>start_of_file
+	jsr LOAD	;finally load the bugger
+	
+	inc MAPSCREEN	;;;;;;
+	
+	jsr diskcheck
+	
+	inc MAPSCREEN	;;;;;;
+				
+	lda #1
+	jsr CLOSE
+	lda #15
+	jsr CLOSE
+	jsr CLRCHN
+	
+	lda location
+	sta player
+	lda location+1
+	sta player+1
+	
+	inc loaded
+	
+	jmp start_loaded	;init.a
+	
+;----------------------------------------------	
+	
+load_tape
+	jsr print_clear
+	jsr prepare_device
+	jsr new_message
+	jsr restore_cia
+
+	lda #01
+	tax
+	ldy #0
+	jsr SETLFS
+	
+	lda #2
+	ldx #<tapfile
+	ldy #>tapfile
+	jsr SETNAM
+	
+	lda #0
+	ldx #<start_of_file
+	ldy #>start_of_file
+	jsr LOAD
+	bcs loaderr
+	
+	lda #1
+	jsr CLOSE
+	jsr CLRCHN
+	clc
+	jsr restore_raster
+	lda location
+	sta player
+	lda location+1
+	sta player+1
+	inc loaded
+;	lda #$0
+;	sta screen	;restore screen
+	jmp start_loaded
+loaderr	
+	clc
+	jsr restore_raster
+;	lda #$0
+;	sta screen	;restore screen
+	jmp init	
+
+;----------------------------------------------	
+	
+	
+savedtxt
+	!pet "Saved",0
+choosetxt
+	!pet "Choose file",13," (Press ",$5d," or hold left to cancel)",0
+
+errortxt
+	!pet "I/O Error",0
+nofilestxt
+	!pet "No save files found",0
+
+
+dirfile	!pet "$0:"
+tapfile !pet "k.*"
+
+

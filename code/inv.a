@@ -1,0 +1,592 @@
+;manage and display inventory list
+;J.Ouellette
+;
+;----------------------------------------------
+;----------------------------------------------
+
+look_inventory
+	jsr display_inventory
+status_trap			;jsr here from display status 
+	jsr trap_button
+-	jsr check_button_tap
+	beq endinventory
+	lda last_key
+	cmp #$5f		;back arrow key
+	bne -
+
+endinventory
+	jsr trap_button
+	lda #BLACK
+	sta CURSORCOLOR
+	jsr print_clear
+	jsr waitforvblank
+	lda #0
+	sta screen
+	jsr restore_map_color
+	ldx #119
+	lda txtcolor
+-	sta $db48,x		;start of message area
+	dex
+	bpl -
+	;sta CURSORCOLOR
+	!if model = c16 {jsr restore_map}
+	lda tempa		;$ff = no selection/cancelled
+	rts
+	
+use_inventory			;select an item for drop/throw/use/buy
+	pha			;a = screen description word, $ff = no word
+	lda #0
+	sta select
+	jsr display_inventory
+	pla
+	bmi +
+	tax
+	lda #<action_type
+	ldy #>action_type
+	jsr findnextwordload
+	ldx #0
+	ldy #34
+	clc
+	jsr PLOT
+	jsr print_string
++	jsr trap_button
+	jsr reverseline
+	
+usewait	jsr check_up		;called from menu.a
+	bne +
+	lda select
+	beq usewait
+	bne selectup
++	jsr check_down	
+	bne +
+	lda select
+	cmp #24
+	beq usewait
+	jsr reverseline		;unreverse old selection
+	inc select
+	jsr reverseline		;reverse new selection
+	bmi usewait
++	jsr check_left_menu
+	beq +
+	lda last_key
+	cmp #$5f		;back arrow key
+	bne no_i_ex
++	jsr trap_all
+	lda #$ff		;canceled
+	sta tempa
+	jmp endinventory
+no_i_ex	jsr check_button_tap
+	bne usewait
+	ldx select		;screen line	
+	lda option,x		;object # at screen line
+	bmi +			;if a=$ff, empty selection
+	sta tempy
+	tax
+	jsr find_item		;zpa/zpb return pointer to item in inventory list
+	lda #0			;a=0, item returned ok
++	sta tempa
+	jmp endinventory	
+selectup
+	jsr reverseline		;unreverse selected line
+	dec select		;change selection
+	jsr reverseline		;reverse new line
+	bmi usewait
+	
+reverseline
+	ldx select
+	ldy #0
+	clc
+	jsr PLOT      		;put cursor at begining of line	 
+	ldx #39
+	
+	!if model = c64 {	
+	ldy $d3       		;cursor column on current line
+-	lda ($d1),y
+	eor #%10000000
+	sta ($d1),y
+	}
+	!if model = c16 {	
+	ldy $ca       		;cursor column on current line
+-	lda ($c8),y
+	eor #%10000000
+	sta ($c8),y
+	}
+	
+	iny
+	dex
+	bpl -
+	rts
+;----------------------------------------------
+txt_screen_on
+	!if model = c16 {jsr save_map}
+	lda #0
+	jsr clear_map_color
+	lda #1
+	sta screen		;set flag for irq to stop splitting screen
+	jsr waitforvblank
+	jmp print_clear		;rts
+	
+display_inventory
+	lda txtcolor
+	sta CURSORCOLOR
+	jsr txt_screen_on
+	jsr prepare_item_pointer	;sets fb/fc to inventory location
+	ldy #0
+	ldx #0
+	stx tempy		;count entires for option index
+invloop	lda (itemlo),y
+	cmp #$ff		;empty slot?
+	beq +
+	txa			;this is the entry number on inv list
+	ldx tempy		;this is the number of entries in menu
+	sta option,x		;this puts them together
+	inc tempy
+	sta tempx		;preserve location in inv list
+	jsr print_item
+	ldx tempx		;recover
+	lda shop_flag		;are we showing shop inventory?
+	beq notshop		;no, check if equipped
+	jsr print_space
+	jsr print_space
+	lda #YELLOW
+	sta CURSORCOLOR
+	lda shop_price,x	;yes, print price
+	jsr print_num
+	lda #<goldtxt
+	ldy #>goldtxt
+	jsr load_print_string
+	lda txtcolor
+	sta CURSORCOLOR
+	bne noequip		;branch always
+notshop	jsr is_equipped		;that item equipped?
+	bne noequip
+	jsr is_cursed		;yes, cursed also?
+	bne nocur
+	lda #18			;inverse check for curse item
+	jsr CHROUT
+nocur	lda #LTRED
+	sta CURSORCOLOR
+	lda #94			;checkmark, in this charset
+	jsr CHROUT
+	lda #146 		;inverse off
+	jsr CHROUT
+	lda txtcolor
+	sta CURSORCOLOR
+noequip	jsr print_return
+	ldx tempx
+	ldy #0
++	inx
+	cpx #24
+	beq invdone
+	lda itemlo
+	clc
+	adc #5
+	sta itemlo
+	lda itemhi
+	adc #0
+	sta itemhi
+	bne invloop
+invdone ldx tempy		;number of entries filled
+	lda #$ff		;empty
+-	sta option,x
+	inx
+	cpx #25			;fill remainder of list
+	bne -
++	rts	
+
+;----------------------------------------------
+find_floor_item	;compare location in list to player.
+		;load zpc/zpd with pointer to item
+		;on the floor. Used in move.a, and menu.a    
+	ldy #0
+	lda #<flooritems + 5
+	sta zpc
+	lda #>flooritems
+	sta zpd
+fitem
+	lda (zpc),y
+	cmp player	
+	bne +
+	iny
+	lda (zpc),y
+	cmp player+1
+	beq gotitem
+	dey
++	tya
+	clc
+	adc #7			;seven bytes separate the entries
+	tay
+	cpy #70			;7 * 10 slots for items on the floor
+	beq noitem
+	bne fitem		;branch always
+		
+gotitem dey
+	sec
+	lda zpc
+	sbc #5			;find begining of entry
+	sta zpc
+	;lda zpd		;within a page, no underflow
+	;sbc #0
+	;sta zpd
+	lda #1			;beq = no item, bne = item found
+noitem	rts
+	
+delete_floor_item
+	lda #$ff
+	sta (zpc),y 		;delete item from list
+	iny
+	lda (zpc),y
+	sta tempa
+	iny
+	iny
+	iny
+	iny
+	iny
+	lda #0
+	sta (zpc),y
+	rts
+
+;----------------------------------------------
+
+print_item			;zpa/zpb = pointer to item
+	lda #<detail_text_book
+	ldy #>detail_text_book
+	jsr load_string	
+	ldy #1
+	lda (itemlo),y
+	tax			;type name index
+	dey
+	lda (itemlo),y		;type
+	beq printweapon		;0weapon,1armor,2ring,3potion
+	cmp #5
+	beq printbow
+	cmp #2
+	beq printring
+	cmp #1
+	beq printarmor
+	cmp #4
+	beq printbook
+	cmp #3
+	bne +
+	jmp printpotion
++	cmp #7
+	bne +
+	jmp printyendor
++	cmp #8
+	bne +
+	jmp printarrow
++	jmp printrations 	;6rations;7yendor
+printbow	
+	lda #<text_bow
+	ldy #>text_bow
+	jsr load_print_string
+	jsr is_identified	;returns 0 if ident
+	bne +
+	ldy #3
+	lda (itemlo),y		;bow of slaying?
+	bmi noslay
+	pha
+	jsr print_of
+	pla
+	tax
+	lda #<monster_name
+	ldy #>monster_name
+	jsr findnextwordload
+	jsr print_string_cap
+	lda #<text_slaying
+	ldy #>text_slaying
+	jsr load_print_string
+noslay	jmp printnumber
++       rts
+	
+printweapon
+	lda #<weapon_name
+	ldy #>weapon_name
+	jsr findnextwordload	;skip 'x' number of words
+	jsr print_string
+	jsr is_identified	;returns 0 if ident
+	bne +
+	jmp printpower
++       rts
+
+printarmor
+	lda #<armor_name
+	ldy #>armor_name
+	jsr findnextwordload
+	beq +			;branch always
+printring	
+	lda #<text_ring
+	ldy #>text_ring
+	jsr load_string
++	jsr print_string
+	jsr is_identified	;returns 0 if ident
+	bne +
+	jmp printarmorpower
++	rts
+	
+printbook	
+	jsr findnextword
+	jsr print_string
+	lda #<text_book
+	ldy #>text_book
+	jmp load_print_string
+
+printrations
+	lda #<text_ration
+	ldy #>text_ration
+	jmp load_print_string
+		
+printyendor
+	lda #<text_yendor
+	ldy #>text_yendor
+	jmp load_print_string
+	
+printpotion	
+	jsr is_identified
+	beq +
+	lda unknowntable,x	;grab index from randomised table
+	bmi +			;if $ff, potion is known
+	tax
+	lda #<detail_unknown_potion
+	ldy #>detail_unknown_potion
+	jsr load_string
++	jsr findnextword
+	jsr print_string
+	lda #<text_potion
+	ldy #>text_potion
+	jmp load_print_string
+	;rts
+
+printarrow
+	ldy #1
+	lda (itemlo),y		;number of arrows
+	jsr print_num
+	lda #<text_arrows
+	ldy #>text_arrows
+	jmp load_print_string
+	rts
+
+printarmorpower
+	lda #<detail_text_armor
+	ldy #>detail_text_armor
+	jmp powerck
+printpower	
+	lda #<detail_text_weapon
+	ldy #>detail_text_weapon
+powerck	jsr load_string
+	ldy #3
+	lda (itemlo),y
+	tax
+	bmi printnumber
+	jsr print_of
+	jsr findnextword
+	jsr print_string
+printnumber
+	ldy #2
+	lda (itemlo),y
+	beq +
+	jsr print_space
+	lda #43		;'+'
+	jsr CHROUT
+	lda (itemlo),y
+	jsr print_num
++	rts
+
+;----------------------------------------------
+is_identified
+	ldy #4
+	lda (itemlo),y
+	and #1
+	cmp #1			;identified
+	rts			;beq = known 
+is_cursed
+	ldy #4
+	lda (itemlo),y
+	and #%10000000
+	cmp #%10000000		;cursed
+	rts			;beq = cursed
+
+
+is_equipped
+	cpx equipped_weapon	;x number of item in inventory
+	beq +			;to check
+	cpx equipped_armor
+	beq +
+	cpx equipped_ring
+	beq +
+	cpx equipped_bow
++	rts
+	
+;----------------------------------------------
+findnextwordload		;
+	jsr load_string
+findnextword			;x is the number of words to skip
+	cpx #0
+	beq foundnext
+	ldy #0
+findloop
+	lda (stringlo),y
+	beq endofword
+findnext
+	jsr add1fd		;in maze.a
+	bcc findloop		;branch always
+endofword
+	dex
+	bne findnext
+	jsr add1fd
+	lda #0
+foundnext
+	rts			;always leaves with zero
+;----------------------------------------------
+prepare_item_pointer
+		lda shop_flag
+		bne shop_inv
+		lda #>inventory
+		sta itemhi
+		lda #<inventory
+		sta itemlo
+		rts
+shop_inv	lda #>shop_inventory
+		sta itemhi
+		lda #<shop_inventory
+		sta itemlo	
+		rts
+		
+		
+find_item	;'x' loaded with item number in inventory
+		jsr prepare_item_pointer
+-		dex
+		bmi founditem
+		lda #5		;list is 5 bytes wide
+		jsr adda	;adds a to zpa/zpb
+		bcc -		;branch always
+founditem	rts
+
+erase_item	ldy #0
+		lda #$ff
+-		sta (itemlo),y
+		iny
+		cpy #5
+		bne -
+		rts
+
+;----------------------------------------------
+
+
+weapon_name
+	!pet "Staff",0
+	!pet "Dagger",0
+	!pet "Spear",0
+	!pet "Mace",0
+	!pet "Broad Sword",0
+	!pet "Battle Axe",0
+	!pet "Bastard Sword",0
+	!pet "Claymore",0
+
+detail_text_weapon
+	!pet "Stunning",0
+	!pet "Terror",0
+	!pet "Poison",0
+	!pet "Blood",0
+	!pet "Magic",0
+	!pet "True Aim",0
+	!pet "Hunger",0
+	!pet "Haste",0
+	!pet "Holy Power",0
+	!pet "The Maladroit",0	
+	
+armor_name
+	!pet "Robe",0
+	!pet "Padded Tunic",0
+	!pet "Leather Armor",0
+	!pet "Chain Hauberk",0
+	!pet "Bronze Cuirass",0
+	!pet "Steel Plate Mail",0
+	!pet "Full Plate Armor",0
+
+detail_text_armor		;also detail for rings
+	!pet "Noise",0
+	!pet "Concealment",0
+	!pet "Blindness",0
+	!pet "Satiation",0
+	!pet "Light",0
+	!pet "Mana",0
+	!pet "Strength",0
+	!pet "Wisdom",0
+	!pet "Resistance",0	;resist status
+	!pet "Anti-Magic",0	;resist magic damage
+	
+
+	
+detail_text_book        	;for potions too, throwing potion = casting spell, drinking potion is hitting self with spell
+	!pet "Paralysis",0
+	!pet "Fear",0
+	!pet "Poison",0
+	!pet "Fire",0
+	!pet "Confusion",0
+	!pet "Healing",0	;hurts undead
+	!pet "Blinding",0
+	!pet "Knowledge",0	;identifies items
+	!pet "Might",0
+	!pet "Teleport",0
+	!pet "Lightning",0
+	!pet "Death",0		;doesn't affect undead
+	!pet "Bless",0		;uncurse, hurt undead, protect from death
+	!pet "Mana",0		;only for potions, no mana books.
+	
+	
+;sp cost also sets potion base price 
+spcost	!byte 6,5,8,25,6,15,5,20,15,20,10,25,50,30
+
+
+;effect of pouring potion over equipment
+;lda effect,potiontype
+;sta newspecial
+
+weaponeffect 
+	!byte 0,1,2,3,$ff,$ff,5,9,6,7,$ff,8,$ff,4
+armoreffect		;also for rings
+	!byte 0,1,$ff,4,8,2,$ff,7,6,$ff,9,8,$ff,5
+
+;potion transformation from using altar	
+altaredpotion
+	!byte 5,5,5,8,5,5,5,12,5,5,9,12,12,13
+	
+	
+detail_unknown_potion		;pointers shuffled each game
+	!pet "Speckled",0
+	!pet "Red",0
+	!pet "Mauve",0
+	!pet "Greenish",0
+	!pet "Plaid",0
+	!pet "Bubbly",0
+	!pet "Turquoise",0
+	!pet "Murky",0
+	!pet "Silver",0
+	!pet "Prismatic",0
+	!pet "Cloudy",0
+	!pet "Foul Smelling",0	;always for potion of death
+	!pet "Perfectly Clear",0;always for potion of bless
+	!pet "Warm, Glowing",0 	;always for potion of mana
+
+	
+text_ration	!pet "Ration",0
+text_potion	!pet " Potion",0
+text_book	!pet " Codex",0
+text_ring	!pet "Ring",0
+text_bow	!pet "Bow",0
+text_slaying	!pet " Slaying",0
+text_arrows	!pet " Arrows",0;for buying bundles of arrows at shops.
+text_yendor	!pet "Amulet of Yendor",0
+
+action_type	!pet " DROP",0
+		!pet "THROW",0
+		!pet "  USE",0
+		!pet "  BUY",0
+
+item_char	!byte WEAPON,ARMOR,RING,POTION,BOOK,BOW,FOOD,ARROW,GOLD,AMULET
+
+;random number range for special item power/gold&ammo amnt.
+item_range	!byte 7,6,$ff,14,13,10,10,10,20
+
+

@@ -1,0 +1,20 @@
+
+!to "katabatia.prg",cbm
+	
+	*=$0FA0		;sys4000
+
+random 
+ 	ldx #0
+-	lda #$00
+ 	eor $dc04
+ 	eor $dc05
+ 	eor $dd04
+	adc $dd05
+ 	eor $dd06
+ 	eor $dd07
+ 	sta $400,x
+ 	dex
+ 	bne -
+ 
+ 	rts
+

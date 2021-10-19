@@ -1,0 +1,139 @@
+;----------------------------------------------
+;RAM
+;----------------------------------------------
+;Saved ram is initialised on new game or 
+;loaded from save file. Unsaved ram is
+;set when it is used, and is a workspace
+;for the program. RAM should align to a 
+;page since the (ZP),y is used on it and
+;the first three tables are not longer
+;than that page.
+;----------------------------------------------
+;Saved Ram
+;----------------------------------------------
+
+
+start_of_file = *
+
+	;weapon type 0weapon 1armor 2ring 3potion 4book 5bow 6ration 7amulet 8arrow 9gold
+	
+inventory = start_of_file	;$ff = empty slot
+monster = start_of_file + $78
+mend = start_of_file + $9c
+flooritems = start_of_file + $9d
+mend2 = start_of_file + $e8
+equipped_weapon = start_of_file + $e9
+equipped_armor = start_of_file + $ea
+equipped_ring = start_of_file + $eb
+equipped_bow = start_of_file + $ec
+	
+unknowntable = start_of_file + $ed
+	
+hp = start_of_file + $fa
+sp hp + 1
+restorerate  = hp + 2
+hunger = hp + 4
+hungerrate = hp + 5
+
+int = hp + 6 
+agi = hp + 7
+str = hp + 8
+maxhp = hp + 9              
+maxsp = hp + 10
+exp = hp + 11
+next = hp + 16
+turns = hp + 20
+end_of_ff = hp + 26	;after here init as 0		
+
+explevel = hp + 27
+restorecount = hp + 28	
+hungercount = hp + 30
+gold = hp + 31
+arrows = hp + 32
+sacrifice = hp + 33
+
+statustable = hp + 34 ;starts two bytes back of poison
+saves = hp + 34 ;free save from death spell
+blind = hp + 35
+poison = hp + 36
+sleep = hp + 37
+confusion = hp + 38 
+might = hp + 39
+
+armoreffects = hp + 40
+
+blindflag = hp + 40
+noisy = hp + 41
+invisible = hp + 42
+satiated = hp + 43
+light = hp + 44
+mana = hp + 45
+strbonus = hp + 46
+intbonus = hp + 47
+
+level = hp + 48 
+yend = hp + 49
+darkone = hp + 50
+challenge = hp + 51
+
+god = hp + 52
+class = hp + 53
+
+loaded = hp + 54
+
+txtcolor = hp + 55
+mapcolor = hp + 56
+
+
+filename = hp + 57
+tapename = hp + 60
+name = hp + 62
+location = hp + 71
+end_of_file = hp + 74
+	     
+;----------------------------------------------
+;Unsaved ram
+;----------------------------------------------
+usr = hp + 75
+dead = usr
+levelup	= usr + 1
+invs = usr + 2
+
+under = usr + 3
+
+addx = usr + 4
+num1 = usr + 4
+
+scrollreg = usr + 5
+addy = usr + 5
+num2 = usr + 5
+
+bkcolor	= usr + 6
+
+up = usr + 7
+down = usr + 8
+left = usr + 9
+right = usr + 10
+button = usr + 11
+joytemp	= usr + 12
+
+scrolly	= usr + 13
+select = usr + 13
+
+option = usr + 14
+boption	= usr + 34
+	
+numberstring = usr + 38
+	     
+vblank = usr + 42
+screen	= usr + 43
+animate	= usr + 44
+
+case	 = usr + 45
+monsterx = usr + 45
+monstery = usr + 46
+playerx = usr + 47
+playery = usr + 48
+
+temp_message = usr + 49	
+

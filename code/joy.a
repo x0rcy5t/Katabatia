@@ -1,0 +1,158 @@
+;joystick/keyboard subroutines
+;
+;J.Ouellette
+;
+;readjoy called by IRQ
+;check routines called in main line
+
+	
+;up	!byte 0	;in ram
+;down	!byte 0
+;left	!byte 0
+;right	!byte 0
+;button	!byte 0
+;joytemp	!byte 0
+
+read_joy
+	lda $dc00 	;read joystick port 2
+	sta joytemp	;save for later
+	lsr       	;get switch bits
+	ror up    	;switch_history = switch_history/2 + 128*current_switch_state
+	lsr       	;update the other switches' history the same way
+	ror down
+	lsr
+	ror left
+	lsr
+	ror right
+	lsr
+	ror button	;button is half speed
+	ror button+1
+	lda joytemp
+	lsr       	;directions are double speed
+	ror up    
+	lsr       
+	ror down
+	lsr
+	ror left
+	lsr
+	ror right
+
+	lda key_timer
+	beq +
+	dec key_timer
+	bne no_kt
+no_kt	rts
+	
++	ldx current_key		;treat keyboard keys like joystick
+	lda shift_flag
+	and #$01
+	beq no_shft
+	lda shifted_keyboard_table,x
+	bne +			;branch always
+no_shft	lda keyboard_table,x	;petscii table in kernal
++	sta last_key
+	;sta $400
+	ldy #0
+	ldx #4
+	cmp #"W"
+	beq +
+	cmp #$40	;"*"
+	bne n_u_key
++	sty up
+	stx key_timer
+n_u_key	cmp #"S"
+	beq +
+	cmp #"/"
+	bne n_d_key
++	sty down
+	stx key_timer
+n_d_key cmp #"A"
+	beq +
+	cmp #":"
+	bne n_l_key
++	sty left
+	stx key_timer
+n_l_key cmp #"D"
+	beq +
+	cmp #";"
+	bne n_r_key
++	sty right
+	stx key_timer
+n_r_key cmp #$0d	;return key
+	beq +
+	cmp #$20	;space
+	bne n_b_key
++	sty button
+	sty button+1
+	lda #8
+	sta key_timer
+n_b_key	rts
+
+check_up		;check routines return
+	lda up  	;z set = true       
+        bne joyf	;z clear = false
+        dec up        
+        bmi joyt	;branch always
+        
+check_down		
+	lda down         
+        bne joyf
+        dec down      
+        bmi joyt
+        
+check_left		
+	lda left         
+        bne joyf
+        dec left      
+        bmi joyt
+        
+check_left_menu		;reverse of others
+	lda left         
+        bne joyf      
+        beq joyt
+        
+        
+check_right	
+	lda right         
+        bne joyf
+        dec right     
+        bmi joyt
+        
+check_button_tap
+        lda button
+        cmp #%11111110
+        rts
+        
+check_button		
+	lda button         
+        bne joyf 	
+        lda button+1
+        bne joyf
+        dec button
+        dec button+1
+joyt	lda #0
+	rts
+joyf	rts
+
+trap_button	;wait for button release
+-	lda button
+	cmp #$ff
+	bne -
+trap_key
+	lda last_key
+	cmp #$ff
+	bne trap_key
+	rts
+	
+trap_left	;wait for direction release
+-	lda left
+	cmp #$ff
+	bne -
+	beq trap_key
+	
+trap_all	;used for fire button prompt
+-	lda joytemp
+	and #%00011111
+	eor #%00011111
+	bne -
+	beq trap_key

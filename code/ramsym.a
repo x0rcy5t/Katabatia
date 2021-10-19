@@ -1,0 +1,163 @@
+;----------------------------------------------
+;RAM
+;----------------------------------------------
+;labels for variable work area.
+;see ram.a for more detail.
+;page aligned.
+;----------------------------------------------
+;Saved Ram
+;----------------------------------------------
+
+!if model = c64 {start_of_file = $c000}
+!if model = c16 {start_of_file = $600}
+
+	;weapon type 0weapon 1armor 2ring 3potion 4book 5bow 6ration 7amulet 8arrow 9gold
+	
+inventory = start_of_file	;$ff = empty slot
+monster = start_of_file + $78
+mend = start_of_file + $9c
+flooritems = start_of_file + $9d
+mend2 = start_of_file + $e8
+equipped_weapon = start_of_file + $ea
+equipped_armor = start_of_file + $eb
+equipped_ring = start_of_file + $ec
+equipped_bow = start_of_file + $ed
+	
+unknowntable = start_of_file + $ee
+	
+hp = start_of_file + $fc
+sp = hp + 1
+restorerate  = hp + 2
+hunger = hp + 4
+hungerrate = hp + 5
+
+int = hp + 6 
+agi = hp + 7
+str = hp + 8
+maxhp = hp + 9              
+maxsp = hp + 10
+exp = hp + 11
+next = hp + 16
+turns = hp + 20
+end_of_ff = hp + 26	;after here init as 0		
+
+explevel = hp + 27
+restorecount = hp + 28	
+hungercount = hp + 30
+gold = hp + 31
+arrows = hp + 32
+sacrifice = hp + 33
+
+statustable = hp + 33 ;starts two bytes back of poison
+saves = hp + 34 ;free save from death spell
+poison = hp + 35
+sleep = hp + 36 
+confusion = hp + 37
+might = hp + 38
+blind = hp + 39
+
+armoreffects = hp + 40
+
+noisy = hp + 40
+invisible = hp + 41
+blindflag = hp + 42
+satiation = hp + 43
+light = hp + 44
+mana = hp + 45
+strbonus = hp + 46
+intbonus = hp + 47
+resist = hp + 48
+antimagic = hp + 49
+rank = hp + 50
+
+nx = hp + 51	;sof + $12f
+
+level = nx 
+yend = nx + 1
+darkone = nx + 2
+challenge = nx + 3
+
+god = nx + 4
+class = nx + 5
+
+loaded = nx + 6
+
+txtcolor = nx + 7
+mapcolor = nx + 8
+
+
+filename = nx + 9
+tapename = nx + 12
+name = nx + 14
+location = nx + 23
+mapseed = nx + 25
+monster_hp = nx + 29 ;sof + $14c
+monster_atk = monster_hp + 24
+monster_int = monster_hp + 48
+monster_agi = monster_hp + 72
+monster_def = monster_hp + 96
+monster_kills = monster_hp + 120
+fb_prompt_toggle = monster_kills + 25
+auto_pickup_toggle = monster_kills + 26
+
+end_of_file = monster_kills + 27  ;sof + $1de
+;----------------------------------------------
+;Unsaved ram
+;----------------------------------------------
+usr = end_of_file + 1
+dead = usr
+levelup	= usr + 1
+invs = usr + 2
+
+under = usr + 3
+num1 = usr + 4
+scrollreg = usr + 5
+num2 = usr + 5
+
+bkcolor	= usr + 6
+
+up = usr + 7
+down = usr + 8
+left = usr + 9
+right = usr + 10
+button = usr + 11
+joytemp	= usr + 13
+
+scrolly	= usr + 14
+select = usr + 14
+
+option = usr + 15
+boption	= usr + 36
+	
+numberstring = usr + 40
+	     
+vblank = usr + 44
+screen	= usr + 45
+animate	= usr + 46
+
+case	 = usr + 47
+monsterx = usr + 47
+monstery = usr + 48
+
+sfxtoggle = usr + 49
+
+shop_flag = usr + 50
+
+crit_flag = usr + 51
+
+key_timer = usr + 52 
+
+end_of_zero = usr + 56
+
+shop_inventory = $c300
+shop_price = shop_inventory + $78
+
+shop_type = shop_price + 25
+temp_message = shop_type + 1
+
+filenames = $c500
+
+
+
+
+

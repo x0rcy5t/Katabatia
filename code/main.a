@@ -1,0 +1,534 @@
+;Katabatia - a Roguelike v1.1
+;
+;By Jeffrey Ouellette 2021
+;This code is free to modify and use for non-commercial purposes.
+;Music is property of Andreas Samuelson and used with permission.
+;
+;Source code best viewed with 8 space tabs
+;
+;The c16 code is broken since it was abandoned
+;
+
+;ZERO PAGE
+
+	!sl "katlabels.txt"	;label dump
+
+c16 = 1
+c64 = 0
+model = c64
+
+
+!if model = c16 {
+!warn "BUILD FOR C=16"	;ZP DEFINITIONS NO LONGER CURRENT
+sr1 = $8c		;rnd seed
+sr2 = $8e
+tempsr2	= $9f
+
+itemlo = $d0
+itemhi = $d1
+stringlo = $d2
+stringhi = $d3
+zpa = $d0
+zpb = $d1
+zpc = $d2
+zpd = $d3
+tempa = $d4
+tempx = $d5
+tempy = $d6
+tempz = $d7
+addx = $d8
+addy = $d9
+playerx = $da
+playery = $db
+tempmonster = $d8;-$dd
+tempundead = $de
+player = $df
+;	 $e0
+mapseedlo = $e1
+mapseedhi = $e2
+tempsr1	= $e3
+;       = $e4
+zpmapa      = $e5;uses separate values here to return
+zpmapb      = $e6;properly when redrawing map
+zpmapc      = $e7
+zpmapd      = $e8
+tempflag    = $e9
+tempr = $ea
+temps = $eb
+
+BG_COLOR = $ff15
+BO_COLOR = $ff19
+rasterline = $ff0b
+irqregister = $ff09
+rasterhigh = $ff0a
+irqenable = $ff0a
+tedchar = $ff13
+tedscreen = $ff14
+irqreturn = $ce0e
+
+TEXTSCREEN = $c00
+COLOR = $800
+MAPSCREEN = $c00
+CURSORCOLOR =  $053b
+
+BLACK = $00
+WHITE = $71
+RED = $32
+CYAN = $63
+PURPLE = $44
+GREEN = $35
+BLUE = $46
+YELLOW = $77
+ORANGE = $48
+BROWN = $29
+LTRED = $62
+DKGREY = $21
+MEGREY = $41
+LTGREEN = $5f
+LTBLUE = $6d
+LTGREY = $61
+
+;char definitions
+
+ARMOR = 29
+RING = 39
+WEAPON = 40
+BOW = 41
+POTION = 33
+BOOK = 34
+FOOD = 38
+GOLD = 36
+ARROW = 30
+ARROWCHR = 94	;chrout value
+GHOST = 7
+
+AMULET = 63
+
+OPENDOOR = 47
+CLOSEDDOOR = 43
+BROKENDOOR = 37
+FLOOR = 46
+ROOMFLOOR = 95
+WALL = 35
+ALTAR = 61
+STAIRSDOWN = 62
+STAIRSUP = 60
+
+UPARROW = 30
+DOWNARROW = 158
+BACKARROW = 31
+CHECKMARK = 122
+
+PLOT   = $d839
+CHROUT = $ec4b
+
+}
+!if model = c64 {
+!warn "BUILD FOR C=64"
+
+itemlo = $0a
+itemhi = $0b
+stringlo = $0c
+stringhi = $0d
+zpa = $0a
+zpb = $0b
+zpc = $0c
+zpd = $0d
+zpmapa = $0a
+zpmapb = $0b
+zpmapc = $0c
+zpmapd = $0d
+
+
+clearcode = $0e	;zp code 16 bytes long
+
+cccol = $1b ;low bytes in selfmode code
+ccmod =	$24 ;
+
+
+
+;$45,$46 used by SID tune 
+
+atk2 = $50
+hitflag = $51
+addx = $52
+addy = $53
+
+tempmonster = $54	; to $59
+
+tempundead = $5a
+player = $5b
+;        $5c
+sr1 = $5d		;rnd seed
+sr2 = $5f
+playerx = $61
+playery = $62
+tempr = $63
+temps = $64
+tempy = $65
+tempz = $66
+tempa = $67
+tempx = $68
+
+last_key = $70
+drive_number = $71
+
+current_key = $cb	;also $c5, set by kernal irq
+shift_flag = $28d   	;1 = shift, 2 = commodore key, 4 = control key
+
+rasterline = $d012
+rasterhigh = $d011
+irqregister = $d019
+irqenable = $d01a
+vicpointer = $d018
+irqreturn = $ea31
+irqexit = $ea81
+
+keyboard_table = $eb81
+shifted_keyboard_table = $ebc2
+
+BG_COLOR = $d021
+BO_COLOR = $d020
+COLOR = $d800
+TEXTSCREEN = $400
+MAPSCREEN = $800
+CURSORCOLOR =  $0286
+
+BLACK = 0
+WHITE = 1
+RED = 2
+CYAN = 3
+PURPLE = 4
+GREEN = 5
+BLUE = 6
+YELLOW = 7
+ORANGE = 8
+BROWN = 9
+LTRED = 10
+DKGREY = 11
+MEGREY = 12
+LTGREEN = 13
+LTBLUE = 14
+LTGREY = 15
+
+;char definitions
+
+ARMOR = 92
+RING = 93
+WEAPON = 91
+BOW = 96
+POTION = 94
+BOOK = 95
+FOOD = 97
+GOLD = 100
+GOLDCHR = 36	;petscii
+ARROW = 99
+ARROWCHR = 163	;petscii value
+GHOST = 237
+
+AMULET = 98
+
+OPENDOOR = 228
+CLOSEDDOOR = 254
+BROKENDOOR = 229
+FLOOR = 224
+ROOMFLOOR = 225
+WALL = 255
+ALTAR = 226
+STAIRS = 227
+SHOP = 223
+
+UPARROW = 27
+DOWNARROW = 31
+BACKARROW = 29
+CHECKMARK = 30
+
+PLOT   = $e50a
+CHROUT = $f1ca
+}
+
+
+
+!if model = c64 { 
+	!to "katabatia.prg",cbm
+}
+!if model = c16 { 
+	!to "kata16.prg",cbm
+}
+	
+;10 SYS 10240 ($2800)
+;!if model = c64 {
+	*=$800
+	!byte $00,$0F,$08,$0A,$00,$9E,$20,$28,$31,$30,$32,$34,$30,$29,$00,$00,$00
+;} else {
+;	*=$1000 				
+;	!byte $00,$0F,$10,$0A,$00,$9E,$20,$28,$31,$30,$32,$34,$30,$29,$00,$00,$00
+;}
+
+	
+!if model = c64 {
+
+	*=$e00
+titlemusic
+	!bin "kat_title.dat"
+	*=$1800
+ingamemusic
+	!bin "kat_ingame.dat"
+	*=$2000
+char
+	!bin "rogue.chr"
+itemchar = $2000+(8*91)
+otherchar = $2000+(8*223)
+monsterchar = $2000+(8*230)
+wallchar = $2000+(8*255)
+}
+	*=$2800
+	
+	!src "init.a"		;vic setup,title,load/clear varibles
+	!src "inv.a"		;inventory control
+	!src "joy.a"		;joystick routines
+	!src "maze.a"		;maze generation/end game
+menu	!src "menu.a"		;ingame menu control/using items
+move	!src "move.a"		;player turn/control
+effect	!src "effect.a"		;spell/item effects
+display	!src "display.a"	;output/draw hud/clearing screen/rng
+	!src "disk.a"		;disk i/o
+	!src "monster.a"	;monster turn/control and data
+	!src "sfx.a"		;sounds
+	
+	
+!if model = c64 {
+titledat
+	!bin "title.pet"	;long-ass string for title screen
+storydat
+	!bin "story.pet"	;and one for the story screen
+instruct1dat
+	!bin "instruct1.pet"	;two for instructions
+instruct2dat
+	!bin "instruct2.pet"
+	
+end1dat
+	!bin "end1.pet"		;three different end screens
+end2dat
+	!bin "end2.pet"		;normal,dark one killed, sacrificed amulet
+end3dat
+	!bin "end3.pet"	
+
+pgfx	!bin "playergfx.chr"	;swap in graphic mode tiles	
+igfx	!bin "itemgfx.chr"
+ogfx	!bin "othergfx.chr"
+
+itxt	!bin "itemtxt.chr"	;swap in text mode tiles
+ptxt	!bin "playertxt.chr"
+otxt	!bin "othertxt.chr"
+
+walltiles			;wall patterns for deeper levels
+	!bin "walls.chr"
+}
+
+
+irq	lda irqregister
+	sta irqregister
+	!if model = c64 {
+		lda vicpointer
+		and #%00001111
+		ora #%00010000	;flip screen
+		sta vicpointer
+		lda #<irq2	;set up interrupt vector
+		sta $314
+		lda #>irq2
+		sta $315
+		lda #$fa	;rasterline
+		sta rasterline
+	}
+
+irqout	jmp irqexit
+
+!if model = c64 {
+irq2	lda #$ff
+	sta irqregister
+	lda screen		;in ram.a
+	bne irq2out		;are we only showing the screen at $400?
+	lda $d018
+	and #%00001111
+	ora #%00100000		;flip screen
+	sta $d018
+	lda char
+	beq noani		;0 = textmode
+	dec animate		;timer to animate chars
+	bne noani
+	lda #10
+	sta animate
+	jsr switchchar		;animate monsters
+	jsr walleffect		;animate wall
+	
+noani	lda #<irq 		;set up interrupt vector
+	sta $314
+	lda #>irq
+	sta $315
+	lda #$d4		;rasterline
+	sta rasterline
+irq2out	lda vblank
+	beq +
+	dec vblank
++	jsr read_joy
+	lda sfxtoggle		;music/sfx/silent?
+	bmi sfxon
+	bne musicon
+	jmp irqreturn
+musicon	jsr ingamemusic+3
+	jmp irqreturn
+sfxon	jsr playsfx
+	jmp irqreturn
+
+anirate !byte 00
+anitemp !byte 00
+anicnt	!byte 00	
+	
+walleffect		;weird moving wall effect for last level
+	lda level
+	cmp #20		;only animate on level 20
+	beq lv20ani
+	cmp #21
+	bne +
+	jmp lv21ani
++	rts
+lv20ani	lda anirate
+	sta anitemp
+	jsr rnd
+	sta wallmod+1
+	jsr rnd
+	rol
+	bit anitemp
+	bmi +
+	rol wallchar
+	rol
++	rol wallchar
+	rol anitemp
+	rol
+	bit anitemp
+	bmi +
+	rol wallchar+1
+	rol
++	rol wallchar+1
+	rol anitemp
+	rol
+	bit anitemp
+	bmi +
+	rol wallchar+2
+	rol
++	rol wallchar+2
+	rol anitemp
+	rol
+	bit anitemp
+	bmi +
+	rol wallchar+3
+	rol
++	rol wallchar+3
+wallmod	lda #$A0
+	rol anitemp
+	rol
+	bit anitemp
+	bmi +
+	rol wallchar+4
+	rol
++	rol wallchar+4
+	rol anitemp
+	rol
+	bit anitemp
+	bmi +
+	rol wallchar+5
+	rol
++	rol wallchar+5
+	rol anitemp
+	rol
+	bit anitemp
+	bmi +
+	rol wallchar+6
+	rol
++	rol wallchar+6
+	rol anitemp
+	rol
+	bit anitemp
+	bmi +
+	rol wallchar+7
+	rol
++	rol wallchar+7
+	inc anicnt
+	bpl +
+	jsr rnd
+	sta anirate
+	lda #0
+	sta anicnt	
++	rts
+
+lv21ani jsr rnd
+	sta wallchar
+	jsr rnd
+	sta wallchar+4
+	jsr rnd
+	sta wallchar+1
+	jsr rnd
+	sta wallchar+7
+	jsr rnd
+	sta wallchar+3
+	jsr rnd
+	sta wallchar+5
+	jsr rnd
+	sta wallchar+6
+	jsr rnd
+	sta wallchar+2
+	rts
+
+switchchar
+	ldx #0
+	lda char + (8*230) + 1	;slime char, second row
+	bne anitwo		;if zero in frame 1 of animation
+	
+anione	lda ogfx+(8*7),x
+	sta monsterchar,x
+	inx
+	cpx #192
+	bne anione
+	rts
+	
+anitwo	lda char + (8*101),x
+	sta monsterchar,x
+	inx
+	cpx #192
+	bne anitwo
+	rts
+}
+
+titleirq
+	lda irqregister
+	sta irqregister
+	lda vblank
+	beq tirqout
+	dec vblank
+tirqout	jsr read_joy
+	lda endpicflag
+	bne +
+	jsr titlemusic+3
+	;jsr playsfx		;uncomment for sfx test in init.a, comment out music jsr
++	jmp irqreturn
+	
+
+
+;temp_color
+;	!fill 95,0
+	
+	!src "ramsym.a"		;variables and reserved work area
+
+temp_color = *	
+	
+!if model = c16 {
+*=*
+temp_map	!fill 200,0
+blah		!byte 0
+}	
+
+
+
+
+

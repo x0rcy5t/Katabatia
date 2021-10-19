@@ -1,0 +1,641 @@
+;Controlling the display.
+;Switching screens, printing/scrolling message,
+;printing numbers, &c.
+;PRNG code here too.
+;
+;The code here should not affect tempx,y,z only tempa
+;
+;J.Ouellette
+
+new_message
+	;used for starting a new 
+	;bottom of the screen message
+	jsr waitforvblank
+	jmp clear_status	;clears bottom line, sets cursor
+
+load_string
+	sta stringlo
+	sty stringhi
+	rts
+load_print_string
+	sta stringlo
+	sty stringhi
+print_string
+	ldy #0
+-	lda (stringlo),y
+	beq +
+	cmp #$f0
+	bcs controlcharacter
+c_o	jsr CHROUT
+	iny
+	bne -
++	rts
+
+print_string_cap	;capitalize first letter
+	ldy #0
+	lda (stringlo),y
+	clc
+	adc #32
+	bne c_o
+	rts
+
+controlcharacter
+	cmp #$fe	;You
+	bne +
+	jsr print_u
++	cmp #$fd	;the
+	bne +
+	jsr print_the
++	cmp #$fc	;It
+	bne +
+	jsr print_iit
++	cmp #$fb	;it
+	bne +
+	jsr print_it	
++	cmp #$f9
+	bne +
+	jsr print_thee
++	cmp #$f1
+	bne +
+	lda stringlo
+	pha
+	lda stringhi
+	pha
+	tya
+	pha
+	jsr print_monster_name
+	pla
+	tay
+	pla
+	sta stringhi
+	pla
+	sta stringlo
++	iny
+	bne -
+	rts
+	
+load_print_message
+	sta stringlo
+	sty stringhi
+print_message
+	jsr new_message
+finish_message
+	jsr print_string
+	jmp scroll_message
+	
+print_r	lda #$9d	;cursor left 
+	lda #82		;'r'
+	bne printend
+
+print_u
+	lda #121	;'Y'
+	bne +
+print_you
+	jsr print_space
+	lda #89		;'y'
++	jsr CHROUT
+	lda #79		;'o'
+	jsr CHROUT
+	lda #85		;'u'
+	bne printend
+
+print_iit
+	lda #105	;'I'
+	bne +
+print_it
+	jsr print_space
+	lda #73		;'i' 
++	jsr CHROUT
+	lda #84		;'t'
+	bne printend	
+
+print_of
+	jsr print_space
+	lda #79		;'o'
+	jsr CHROUT
+	lda #70		;'f'
+	bne printend
+	
+print_a	
+	lda #97 	;'A'
+	bne printend
+print_thee
+	lda #116	;'T'
+	bne +
+print_the
+	jsr print_space
+	lda #84		;'t'
++	jsr CHROUT
+	lda #72		;'h'
+	jsr CHROUT
+	lda #69		;'e'
+printend
+	jsr CHROUT
+	
+print_space	
+	lda #32		;space
+	jmp CHROUT
+	
+	
+print_clear
+	lda #0
+	jsr clear_color
+	lda #147	;clear & home
+	jsr CHROUT
+	lda CURSORCOLOR	;cursor color
+	jmp clear_color	;clear color for kernal bug
+
+print_return
+	lda #13		;new line
+	jmp CHROUT
+
+print_name	
+	lda #<name
+	ldy #>name
+	jmp load_print_string
+
+print_hp
+	lda #<hptxt
+	ldy #>hptxt
+	jsr load_print_string
+	lda hp
+	jmp print_num
+	
+print_sp
+	lda #<sptxt
+	ldy #>sptxt
+	jsr load_print_string
+	lda sp
+	jmp print_num
+
+;----------------------------------------------
+	
+clear_color
+	ldx #0
+-	sta COLOR,x
+	sta COLOR+250,x
+	sta COLOR+500,x
+	sta COLOR+750,x
+	inx
+	cpx #250
+	bne -
+	rts
+	
+
+clear_map_color
+	;monochrome color compressed bitwise to 95 bytes
+
+	lda #<COLOR+$2b
+	sta addx
+	lda #>COLOR
+	sta addx+1
+	ldx #$0
+-	ldy #$0
+cmc	lda (addx),y
+	and #%00001111
+	clc
+	beq +
+	sec
++	ror temp_color,x
+	lda #0
+	sta (addx),y
+	iny
+	cpy #8	;next compressed byte?
+	bne cmc
+	inx
+	cpx #95
+	beq cmcend
+	lda addx
+	clc
+	adc #8
+	sta addx
+	lda #0
+	adc addx+1
+	sta addx+1
+	bne -
+cmcend	rts
+
+change_map_color
+	jsr clear_map_color
+restore_map_color
+	lda #<COLOR+$2b
+	sta addx
+	lda #>COLOR
+	sta addx+1
+	ldx #$0
+-	ldy #$0
+cmr	lsr temp_color,x
+	lda #0
+	bcc +
+	lda mapcolor
++	sta (addx),y
+	iny
+	cpy #8	;next compressed byte?
+	bne cmr
+	inx
+	cpx #95
+	beq cmrend
+	lda addx
+	clc
+	adc #8
+	sta addx
+	lda #0
+	adc addx+1
+	sta addx+1
+	bne -
+cmrend	lda player
+	sta addx
+	lda player+1
+	clc
+	adc #>COLOR-MAPSCREEN
+	sta addx+1
+	ldy #0
+	lda #LTGREY
+	sta (addx),y
+	rts	
+
+!if model = c16 {
+
+;save graphic features of dungeon
+;map redrawn from original seed
+
+save_map
+	lda #<(MAPSCREEN+42)
+	ldy #>(MAPSCREEN+42)
+	sta zpc
+	sty zpd
+	lda #$ff
+	sta MAPSCREEN+$31C
+
+	ldy #0
+	ldx #0
+nextch	lda (zpc),y		;a is the char
+	beq nonex
+	cmp #$20		;space, surrounds map
+	bne +
+nonex	jsr add1fd
+	bcc nextch
++	cmp #WALL
+	beq nonex
+	cmp #FLOOR
+	beq nonex
+	cmp #ROOMFLOOR
+	beq nonex
+	cmp #$ff		;End of map?
+	beq endmapsave
+	sta temp_map,x
+	inx
+	lda zpc
+	sta temp_map,x
+	inx
+	lda zpd
+	sta temp_map,x
+	inx
+	cpx #201
+	bne nonex
+endmapsave
+	lda #$ff
+	sta temp_map,x
+	rts
+	
+restore_map
+	jsr remake_maze
+	ldx #0
+-	lda temp_map,x
+	cmp #$ff
+	beq endrestoremap
+	tay
+	inx
+	lda temp_map,x
+	sta zpc
+	inx
+	lda temp_map,x
+	sta zpd
+	inx
+	tya
+	ldy #0
+	sta (zpc),y
+	beq -
+endrestoremap
+	rts
+}	
+	
+!if model = c64 {
+scroll_text
+	ldx #0
+	!set row = 1
+stloop	!do {		
+		lda TEXTSCREEN+(row*40),x
+	        sta TEXTSCREEN+((row-1)*40),x	
+	        !set row = row + 1
+	} until row = 25
+        inx
+        cpx #40
+        beq stout
+        jmp stloop
+stout	rts
+}
+
+!if model = c16 {
+scroll_text
+	ldx #0
+	!set row = 22
+stloop	!do {		
+		lda TEXTSCREEN+(row*40),x
+	        sta TEXTSCREEN+((row-1)*40),x	
+	        !set row = row + 1
+	} until row = 25
+        inx
+        cpx #40
+        beq stout
+        jmp stloop
+stout	rts
+}
+
+death			;blood running down screen animation for death
+	ldy #0
+	sty playerx
+	sty playerx+1
+	sty zpa
+deloop	lda #>MAPSCREEN
+	sta zpd
+	inc playerx
+	bne +
+	inc playerx+1
+	lda playerx+1
+	cmp #4		;count to $ff x 4 
+	beq stout
++	ldx #40
+	jsr rndrange
+	clc
+	adc #40
+	sta zpc
+	
+	ldx #0
+	stx tempa
+-	lda (zpc),y
+	cmp #160	;inverse space
+	beq lookdown	;space filled, continue
+	lda #160
+	sta (zpc),y
+	lda #>COLOR
+	clc
+	adc tempa	;keeps track of upper nybbles increased
+	sta zpd
+	lda #2		;red
+	sta (zpc),y	;colormem
+dedelay inx		;run out x for delay, gets shorter over time
+	bne dedelay
+	beq deloop	;branch always 
+
+lookdown
+	inx
+	cpx #20
+	beq deloop
+	clc
+	lda zpc
+	adc #40
+	sta zpc
+	bcc -
+	lda zpd
+	adc #0
+	sta zpd
+	inc tempa
+	bne -		;branch always
+;----------------------------------------------
+
+scroll_message
+	jsr waitforvblank
+	jsr scroll_text
+print_status
+	jsr clear_status
+	lda #WHITE
+	sta CURSORCOLOR
+	lda #18		;inverse on
+	jsr CHROUT
+	jsr print_name
+	lda #146	;inverse off
+	jsr CHROUT
+	jsr print_hp
+	jsr print_sp
+	jsr print_space
+	lda #YELLOW
+	sta CURSORCOLOR
+	lda #GOLDCHR 	;dollar sign(cent sign)
+	jsr CHROUT
+	lda #58		;':'
+	jsr CHROUT
+	lda gold
+	jsr print_num
+	jsr print_space
+	lda #ORANGE
+	sta CURSORCOLOR
+	lda #ARROWCHR	;arrow sign 
+	jsr CHROUT
+	lda #58		;':'
+	jsr CHROUT
+	lda arrows
+	jsr print_num
+	
+	ldx #0		;top status line
+	lda hunger
+	cmp #30
+	bcs noth
+	cmp #0
+	beq +
+-	jsr print_top
+	jmp noth
++	inx
+	bne -
+noth	ldx #2
+-       lda statustable,x                 
+	beq +
+	jsr print_top
++	inx
+	cpx #9
+	bne -
+donestatus
+	lda txtcolor
+	sta CURSORCOLOR
+	sec
+	rts
+
+print_top
+	stx num1		;x is trashed
+	lda statuscolor,x	;get color of text
+	sta topmod+1		;sta in code
+	lda statusx,x		;where to start the text
+	sta tempa
+	lda #<topstatustxt
+	ldy #>topstatustxt
+	jsr findnextwordload	;x gets you the string
+	ldx tempa
+	ldy #0
+-	lda (stringlo),y
+	beq donetop
+	sta MAPSCREEN,x
+topmod	lda #$A0
+	sta COLOR,x
+	inx
+	iny
+	bne -
+donetop	ldx num1
+	rts
+
+clear_status		;clear status line to print new message
+	ldx #0
+-	lda #32
+	sta TEXTSCREEN+$3c0,x
+	sta MAPSCREEN,x
+	lda txtcolor
+	sta COLOR+$3c0,x
+	inx
+	cpx #40
+	bne -
+	ldx #24		;cursor in lower left corner
+	ldy #0
+	clc
+	jmp PLOT
+
+print_num
+	ldx #0		;prepare string
+	stx numberstring + 0
+	stx numberstring + 1
+	stx numberstring + 2
+	stx tempa
+	
+	ldy #$2f	;convert accumlator to ascii
+	ldx #$3a	;by whiteflame
+	sec
+- 	iny
+  	sbc #100
+  	bcs -
+- 	dex
+  	adc #10
+  	bmi -		;y = hundreds
+  	adc #$2f	;x = tens
+  	  		;a = ones
+  	inc tempa
+  	cpy #$30	;truncate
+  	beq +
+  	sty numberstring
+	stx numberstring+1
+	sta numberstring+2
+	jmp numout
++ 	cpx #$30
+	beq +
+	stx numberstring
+	sta numberstring+1
+	jmp numout
++ 	sta numberstring
+numout  lda #<numberstring
+	ldy #>numberstring
+	jmp load_print_string 	;rts
+
+;----------------------------------------------
+
+!if model = c64 {
+	timer1 = $dc04
+	timer2 = $dc05
+	timer3 = $dd04
+	timer4 = $dd05
+	timer5 = $dd06
+	timer6 = $dd07
+}
+!if model = c16 {
+	timer1 = $ff00
+	timer2 = $ff01
+	timer3 = $ff02
+	timer4 = $ff03
+	timer5 = $ff04
+	timer6 = $ff05
+}
+
+rnd	;by Hanno Behrens
+	;result in a (lo) and y (hi)
+	lda sr1+1
+	asl
+	asl
+	eor sr1+1
+	asl
+	eor sr1+1
+	asl
+	asl
+	eor sr1+1
+	asl
+	rol sr1		;shift this left, "random" bit comes from low
+	rol sr1+1
+		
+	lda sr2+1
+	asl
+	eor sr2+1
+	asl
+	asl
+	ror sr2		;shift this right, random bit comes from high - nicer when eor with sr1
+	rol sr2+1
+
+	lda sr1		;mix up lowbytes of SR1
+	eor sr2		;and SR2 to combine both 
+	rts
+	
+d20	ldx #21
+rndrange
+	jsr rnd
+range	cpx #$0		;returns a number between 0 and x-1
+	clc
+	beq +
+	stx num1	;return in a
+rah	cmp num1
+	bcc +		
+	sbc num1
+	jmp rah	
++	rts
+
+;----------------------------------------------
+
+waitforvblank		;wait for the vblank
+	inc vblank	;used when printing a message
+-	lda vblank	;because color saving takes
+	bne -		;time
+	rts
+
+;----------------------------------------------
+!if model = c64 {
+hptxt 	!byte 150	;light red
+	!pet " HP:"
+	!byte 0
+	
+sptxt 	!byte 153	;light green
+	!pet " SP:"
+	!byte 0 
+}
+
+!if model = c16 {
+hptxt 	!byte 156	;purple
+	!pet " HP:"
+	!byte 0
+	
+sptxt 	!byte 152	;green-blue
+	!pet " SP:"
+	!byte 0 
+}
+
+topstatustxt
+	!scr "Hungry",0
+	!scr "Starving!",0
+	!scr "Pois",0
+	!scr "Stun",0
+	!scr "Conf",0
+	!scr "Mght",0
+	!scr "Blnd",0
+	!scr "Nois",0
+	!scr "Invs",0
+	
+
+statuscolor
+	!byte LTRED,RED,GREEN,PURPLE,CYAN,BROWN,BLUE,ORANGE,LTBLUE
+
+statusx 
+	!byte 0,0,10,15,20,25,30,30,35
+
+

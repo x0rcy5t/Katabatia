@@ -1,0 +1,218 @@
+
+----------------------------------------
+ | /  /\  ---  /\  |\   /\  --- .  /\
+ |/  |  |  |  |  | | > |  |  |  | |  |
+ |   |--|  |  |--| |<  |--|  |  | |--|
+ |\  |  |  |  |  | | > |  |  |  | |  |
+ | \ |  |  |  |  | |/  |  |  |  | |  |
+----------------------------------------
+    A ROGUELIKE FOR C64 BY MALCONTENT
+----------------------------------------
+
+              INTRODUCTION
+
+    Ages ago, during the genesis of the universe, Chaos, by chance produced Order, in the form of a song that would echo throughout the void, bringing form from wither there was naught but randomness. So our world came to be. The beings who inhabited it were gods, but the Entropy of Order is absolute, and Evil came as those beings warred for power. Men, though created as thralls for the gods, had come to learn that their deities' conflicts were pushing the universe inexorably towards the void of Chaos. The great sages were filled with hopeless despair. Then one day a star fell to earth. It was no normal star, but a primordial piece of pure Order. Invulnerable to destruction and incorruptible by Chaos, it vibrated with musical brilliance, and enlightened all who could feel its silent song. One inspired sage, the wise Yendor, fashioned an amulet out of this star, and built for it a special resting place called The Crystal Mount, a tower that rose over the lands of Laurita. Within it, a crystalline chamber amplified the song of the amulet to cover the kingdom. Thus Laurita became the one bastion of Order in a world that was falling into Chaos. Still, though its power was great, the human hands that constructed the amulet could still take it. Hence, the Dark One found his opening.
+    The Dark One tricked an Acolyte of the Mount, Werdna, to steal the amulet, whence he sealed it in a void of Evil, and began his attack on Laurita. Katabatia is the gateway to his domain, and the source of his assault. You, a young, but inspired warrior, seem to be the only one who can still hear the amulet's song, and it seems to be calling you...
+ 
+                  ABOUT
+
+    Katabatia was programmed by Jeffrey Ouellette with music by Andreas Samuelson. It is a rogue-like game inspired by Rogue, Sword of Fargoal, and Ancient Domains of Mystery. Katabasis is an old Greek word that translates to, "go down" and often is used to describe various Greek heroes' journeys into the underworld.
+    Send comments to jddgames[]yahoo.com
+
+             GETTING STARTED
+ 
+    Use a joystick in port 2. Press fire, space, or return to bypass the title screen. The first menu will ask if you want to load an old character, or if you want to start a new game. Characters may be loaded from tape or disk. If you select a new game you will be asked to select your character's class.
+
+Warrior:
+    A warrior is the easiest class to play with. They get strong quickly but are poor magic users. They start with a spear and leather armor.
+
+Rogue:
+    A rogue relies on cunning and speed over strength. They make excellent archers and competent spell casters. They start with a bow, and a dagger of poison.
+
+Magician:
+    A magician is difficult to keep alive early in the game, but can become quite formidable by the end of it. They start with a staff of magic, and a random spell book.
+
+    After you select your class, you choose which deity you wish to worship. The deity will confer the listed bonus on you when you please them by sacrificing gold.
+    Finally, you will enter a name. All these choices determine the shape of the dungeon you will traverse. If you always play as Mort, a warrior who worships Jacek, you will always enter the same dungeon.
+
+               HOW TO PLAY
+               
+    You traverse the dungeon using the joystick. Holding down the button will bring up a menu. The menu might have an option that is context dependent. If you stand over an item, you can pick it up, if you stand over a door, you can close it. To cancel the menu, or any menu, hold left. Tapping the button lets a turn pass by. Pick up gold and arrows just by walking over them. Search for loot and fight the monsters for experience, but don't linger too long on a level, as you require food.
+    If you find the stairs, think before you descend, as it is a one-way trip. Using the stairs also gives you an option to save the game. The bottom floor contains the Amulet of Yendor guarded by the Dark One. When you collect the amulet, new stairs will lead upwards.
+    The game can also be played on the keyboard:
+
+  W      @
+ A+D or :+;  to move. Space and return act as fire.
+  S      /
+      
+  . or G - Get item from floor
+  U - Use/Equip/Remove item
+  T - Throw item/Shoot bow
+  R - Drop item
+  P - Sacrifice gold at an altar (Pray)
+  C - Close door
+  E - Enter shop
+  M - Show message log*
+  Z - Status
+  * - Rest 1 turn
+  Shift-* - Rest (Held)
+  Shift-> - Use stairs
+  Shift-S - Save game (Only on stairs)
+  Shift-Q - Quit
+  Shift-A - Toggle autopickup on/off
+  Shift-F - Toggle prompt to press fire button
+  F1 - Change dungeon wall color
+  F3 - Change message text color
+  F5 - Toggle between graphic tiles or text mode
+  F7 - Toggle Music/SFX/Mute
+
+  *The log is cleared if you view the inventory or status screen.
+
+Saving the Game:
+    You can only save the game on stairs. Saving your game will force you down the stairs. You can save a character to tape or to disk.
+
+Loading the Game:
+    From the main menu you can choose to load an old game from disk or tape, if you load from tape, the game will load the first file it finds prepended with "k.", from disk, files with this prefix will be listed can be selected.
+ 
+Using Items:
+    Open the menu and select "Inventory". A second menu appears and you can select "Use/Equip Item". Your inventory will now appear and you can select an item to use. If you select a piece of equipment, you will wear or remove it. If you select a book, you will attempt to cast the spell inside it. If you select a potion or a ration you will consume it.
+
+Fighting Monsters:
+    To attack a monster with the weapon you are using, simply walk into it. Your chance to hit is a reflection of your agility score and the monster's. Heavier armor lowers your agility. The weapon will deal damage using the weapons power, its bonuses, and your strength.
+    In the menu, select "Throw/Shoot" and if you have a bow ready, you are prompted to shoot by pressing a direction. Pressing the button will bring up your inventory where you can select an item, such as a potion, to throw. The inventory comes up automatically if you do not have a bow at the ready. A bow does bonus damage based on your agility.
+    Use a book to cast a spell. If you have enough spell points you will succeed, otherwise you will be left exhausted. Some spells take your character's intelligence into account. A cast spell can not be cancelled; its energy must be released. Push in a direction to shoot it, or press fire to direct it onto yourself.
+    Potions act like spells if you throw them, though not taking gaining a bonus from your intelligence. You can also throw Books like potions. Thrown equipment does a little damage, but not much. All thrown items are lost.
+
+Defending Yourself:
+    Wear armor to decrease the damage done to you. Weapons and armor have minimum strength requirement. Heavier armors will also penalize your agility slightly unless you are 4 points stronger than the minimum required strength. Some items have bonuses and some are enchanted. You will not know if this is the case until the item is identified. Some items are cursed, and you will be unable to take them off until you can remove the curse. You will not know if an item is cursed until you wear it, even if it has been identified. Cursed items are half as effective as uncursed ones. If you drop a potion on a weapon, armor, or ring, you can enchant it, or change its existing enchantment. Rings are always enchanted. Some bows are bows of slaying, and will deal additional damage to the type of monster it is designed to slay.
+
+     Weapons:              Armor:
+  1)Staff            1)Robe
+  2)Dagger           2)Padded Tunic
+  3)Spear            3)Leather Armor
+  4)Mace             4)Chain Hauberk
+  5)Broad Sword      5)Bronze Cuirass
+  6)Battle Axe       6)Steel Plate Mail
+  7)Bastard Sword    7)Full Plate Armor
+  8)Claymore
+                 
+ Weapon Enchantments:
+  * of Stunning - May stun enemy
+  * of Terror - May cause enemy to flee
+  * of Poison - May poison enemy
+  * of Blood - HP+ after slaying enemy 
+  * of Magic - Uses INT not STR bonus
+  * of True Aim - High chance to hit
+  * of Hunger - Consume food faster
+  * of Haste - Chance for double strike
+  * of Holy Power - Bonus vs undead/evil
+  * of The Maladroit  - Lower hit chance
+  
+ Armor/Ring Enchantments:
+  * of Noise - Attract monsters
+  * of Concealment - Invisibility
+  * of Blindness - Causes blindness 
+  * of Satiation - Slows digestion
+  * of Light - Increase sight range
+  * of Mana - Regenerate MP faster
+  * of Strength - Adds 2 to STR
+  * of Wisdom - Adds 2 to INT
+  * of Resistance - Resist status effect
+  * of Anti-Magic - Lower magic damage
+  
+Spells and Potions:
+    Spells and potions act exactly alike except that spells get a benefit from your intelligence. Spells cost magic points, and even if you do not have enough, you will still expend all that you have trying to cast a spell outside of your ability. Drinking a potion is like casting a spell on yourself; throwing a potion is like casting a spell on an enemy. Books can be thrown too, and act like potions.
+
+ Spell\Potion List:
+  * Paralysis - Stuns target
+  * Fear - Makes enemy flee
+  * Poison - Poisons target
+  * Fire - Major fire damage
+  * Confusion - Confuse target
+  * Healing - Heals target
+  * Blinding - Blinds target
+  * Knowledge - Identifies items
+  * Might - Temporary STR bonus
+  * Teleport - Teleport target
+  * Lightning - Minor lightning damage
+  * Death - Instantly kill target
+  * Bless - Remove curses on worn items
+  * Mana - Restore MP
+  
+Pleasing the Gods:
+    Nothing pleases mankind's capricious gods more than gold. Within the dungeon you will find altars to your chosen deity on every second level. If you sacrifice enough gold your god will empower you, bless you, heal your wounds, and identify your items. As you gain favor, you will need more and more gold before your god will reward you.
+    If you drop a potion onto an altar, it may change it. This is a good way to get healing and other beneficial potions, but slightly increases the amount of gold required to gain favor.
+
+Shops:
+    Shops appear rarely, and can be life-saving. There are four kinds of shops: a provisioner who sells food, a fletcher who sells bows and arrows, an alchemist who sells potions, and a junk shop selling weapons and armor. The junk shop owner collects items and appraises them reasonably accurately, but otherwise has no knowledge of the properties of the equipment they find. Likewise, the alchemists, with their quixotic tongue, are little help in identifying potions. Savvy shop keepers understand that deeper delving customers are more desperate, so items get pricier as you descend in the dungeon.
+
+Final Words:
+    This manual does not mention certain features of the game. Some may hinder, and some may help. You will discover them as you play. Due to the nature of the randomness of dungeons, the game might generate an unbeatable dungeon, the usual problem being there is not enough food. 
+
+                BEASTIARY
+                
+Slime:
+    The miasma that escapes the lair of evil is potent enough to animate the moist muck that grows close to the warm surface. These weak, but tenacious familiars of the Dark One deter the curious from the true horrors that reside within Katabatia.
+
+Kestrel:
+    These once keen-eyed predators were corrupted by the Dark One's promise of endless prey. Powered by dark magic, their eyes glow when they strike, and they can lie dormant for many years.
+
+Emu:
+    This ancient bird, which possesses a keen intelligence, is a surprisingly adaptable creature, especially having been powered by the forces of evil. In spite of their evolutionary preference for spacious plains, emus still possess excellent agility in the caves that their evil kin have called their own. A battle with an emu may occasionally be a novice's downfall.
+
+Rattlesnake:
+    The rattlesnake is usually a timid and defensive creature when humans near, but driven to desperation in a hostile environment, it prefers to strike with the goal of sating itself on the blood of its victim. Its venom enables it to prey on creatures to large to eat.
+
+Satyr:
+    These beings of arousal hypnotize with music, but their once amorous nature has been corrupted and they are now murderous. They prefer to strike in narrow corridors, where their confused prey is more easily cornered.
+    
+Aquator:
+    This creature exudes corrosive saliva that weakens armor. Its insect-like shell and pincers contrast with the fleshy tendrils that propel it along the floor.
+
+Ice Monster:
+    At the point in the earth that is the coldest, betwixt the flaming heart of the deep and the heavenly sun, evil moulds the cavern's rime into monstrous sentinels. Their frosty breath may allow their cohorts to close ranks.
+
+Ghost:
+    Powerful spirits tormented in death, ghosts can pass through, and attack from, solid walls in their singular quest to destroy the pure-hearted.
+
+Wizard:
+    A human who has disgraced themselves to become an undying weapon of evil magic, this corrupted soul represents the antithesis of the noble art of the righteous magician. Those drawn to Katabatia loyally defend the Dark One from would be meddlers.
+
+Flytrap:
+    Sustained by fluorescent fungi and abundant prey, this huge plant can shoot poisonous spores. Its long, creeping tendrils will feed off decomposing victims like roots in the earth. Those that venture near its massive maw face a dissimilar, but equally gruesome fate.
+
+Centaur:
+    These nimble creatures are masters of archery, but are not very bright. Once servants of a long dead god, centaurs now roam masterless, but nevertheless form small communes. Some, like those found in Katabatia, have turned to evil.
+
+Manticore:
+    Once a mighty wizard conducted a hideous experiment, the result: a hideous man-eater. It has the head of a man with three rows of teeth, lion's body and mane, and a tail tipped with quills containing a powerful paralytic agent. The manticore can shoot these barbs to immobilize its prey before it moves in for the kill.
+
+Vampire:
+    Undead monsters centuries old, vampires found in Katabatia are even more horrific than their terrestrial kin. Ages of lurking in darkness have warped their appearance so that they no longer look like the humans they once were. 
+
+Ogre:
+    An ancient race some controversially link to men's heritage, the ogre is a towering humanoid with a simple, but swift intellect. Normally tribal, those within Katabatia have been corrupted by the winds of evil that emanate from the Dark One's abode. While often violent and quick to anger, outside of this forsaken pit they are rational masters of sail, ruling the trade winds and calling a distant archipelago their home.
+
+Baba-yaga:
+    Witches of unknown origin, baba-yagas are mercurial creatures with mysterious motives. Flying via mortar, and wielding a pestle, they possess odd powers, principally hypnotism. Normally forest-dwelling, some baba-yagas were tempted from the great power emanating from Katabatia. These twisted witches will attack viciously in an attempt to devour hapless adventurers.
+
+Warlock:
+    An undead abomination animated by the most powerful of magic, the warlock is so evil that its touch is fatal. Divine favor, and a bit of luck, are required to survive an encounter with a warlock. An abundance of missile weapons helps too.
+     
+Kraken:
+    The Kraken appeared suddenly in the historical record, and their origin is the subject of much speculation. Their current existence on the high seas and their propensity to attack seafarers is well documented. Less known is their ability to live on land where they prefer the damp of the underworld. They can blind with their ink and have a poisonous bite, which makes them quite formidable. 
+
+Hecatonchires:
+    Spawn of the titans of old, after the fall of the old gods they were imprisoned in the heart of the earth. They have a hundred hands, and fifty heads, with strength as terrifying as their aspect. 
+
+Dragon:
+    The most fearsome of all the denizens of the dungeon, the dragon can easily slay the strongest of warriors. Its flaming breath makes both approaching and fleeing this creature dangerous. 
+
+The Dark One:
+    The old gods battled for supremacy in war that nearly destroyed the world, but their conflict instead lead to their downfall, and in their place legendary warriors ascended into godhood and brought a measure of stability. Their malevolence towards each other however had become manifest, and a god in its own right. The Dark One thus exists with the sole drive of reviving the celestial war and returning to the chaos of the old gods. Thus the Dark One secured and jealously protects The Amulet of Yendor, the object most likely to foil this sinister scheme.
+
+                THANKS
+                  
+    Thanks to you for downloading my game! Thanks to Andreas for the music (and also apologies to him for the delay using it). Thanks also to hending for the all of the encouragement over this long time. It took a while but I did it! Development of this game started for first RGCD cart compo way back when. The charset I made with Charpad. The assembler was ACME. The PETSCII pics I made in CBM PRG Studio. The editor was jEdit. VICE, Frodo, and ICU64 were indispensable. Thanks to Rick Bayliss for his original Assemble-It pages that really got me started with c64 coding all those years ago. Further thanks to Jammet and intric8 for prodding me to add keyboard controls.
+
+

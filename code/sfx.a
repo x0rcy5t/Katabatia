@@ -1,0 +1,440 @@
+;sfx code for katabatia
+;2018 jeffrey ouellette
+; ------------------------
+
+wf_noise = 129
+wf_pulse = 65
+wf_saw = 33
+wf_tri = 17
+wf_triring = 21
+wf_tripulse = 81
+wf_triringpulse = 85
+
+
+ring = 4
+sync = 2
+
+
+sid  = $d400 	;sid voice 1 start
+voc3 = $d40e 	;voice 3 freq for sync/ring
+
+sfxwait		;play entire sfx before returning control
+		pha
+		lda sfxtoggle
+		bpl +
+		lda #1
+		sta time
+		pla
+		sta soundeffect
+-		lda time
+		bne -
+		lda #0
+		sta write
+		rts
++		pla
+		rts
+
+initsfx		lda #$00
+		sta time
+		ldx #$00
+-		sta sid,x
+		inx
+		cpx #$19
+		bne -
+		lda $8f
+		sta $d418
+		lda wf_tri
+		sta sid+18
+		rts
+
+playsfx		lda soundeffect	;Jump here from interupt
+		cmp #$ff	;Has a new sound effect been requested? 
+		bne +
+-		jmp continue	;No, continue with current sound
++		cmp write
+		bcc -		;higher priority?
+		jmp newsound	;initialise a sound
+
+continue	lda time
+		bne +		;sound over, clear write flag
+		sta write
+		lda currentwf
+		and #254
+		sta sid + 4	;close gate 
+		rts
++		dec time	;sound still playing
+		lda #$ff
+		sta soundeffect	;clear new sound request
+		lda waveformdelay
+		bmi nowf2
+		bne +
+		lda waveform2
+		sta currentwf
+		sta sid + 4
++		dec waveformdelay		
+nowf2		lda slide
+		bpl +		;slide on sound?
+		rts
++		bne slidedown
+		clc
+		lda freqlo	;get voice freq lo byte and add
+		adc loslidestep    
+		sta sid
+		sta freqlo
+		lda freqhi	;get voice freq hi byte and add
+		adc hislidestep  
+		sta sid+1
+		sta freqhi
+		lda bouncetime
+		cmp #$ff	;is there a bounce?
+		bne bounceslide
+		rts
+slidedown	sec
+		lda freqlo        
+		sbc loslidestep  
+		sta sid
+		sta freqlo
+		lda freqhi        
+		sbc hislidestep
+		sta sid+1
+		sta freqhi
+		lda bouncetime
+		cmp #$ff
+		bne bounceslide
+		rts
+
+bounceslide	sec
+		sbc #1
+		sta bouncetime
+		bcc switch
+		rts
+switch		lda slide
+		eor #%00000001
+		sta slide	;reverse slide direction
+		lda bouncemax
+		sta bouncetime  ;reset timer
+		rts
+		
+newsound	lda soundeffect
+		tax
+		stx write
+		stx sfxindex
+		lda #0
+		sta sid+4
+		lda sfx_time,x
+		sta time
+		lda sfx_waveform2,x
+		sta waveform2
+		lda sfx_waveformdelay,x
+		sta waveformdelay
+		lda sfx_bounce,x
+		sta bouncetime
+		sta bouncemax
+		lda sfx_slide,x
+		sta slide
+		lda sfx_waveform,x
+		sta currentwf
+		txa
+		asl
+		tax
+		lda sfx_freq,x
+		sta freqlo
+		sta sid
+		lda sfx_freq+1,x
+		sta freqhi
+		sta sid+1
+		lda sfx_ringmod,x
+		sta voc3
+		lda sfx_ringmod+1,x
+		sta voc3+1
+		lda sfx_slidestep,x
+		sta loslidestep
+		lda sfx_slidestep+1,x
+		sta hislidestep
+		lda sfx_pulse,x
+		sta sid+2
+		lda sfx_pulse+1,x
+		sta sid+3
+		lda sfx_adsr+1,x
+		sta sid+5
+		lda sfx_adsr,x
+		sta sid+6
+		lda currentwf
+		sta sid+4
+		lda #$ff
+		sta soundeffect
+		ldx write
+		bne +
+		inc write		;footstep slowdown
++		rts
+
+;-------------------------------------------
+;SFX DEFINITIONS
+;Priority from least to greatest
+;-------------------------------------------
+
+loslidestep	!byte 0
+hislidestep	!byte 0
+slide		!byte 0
+time		!byte 0 ;decrement
+type            !byte 0 ;which sound number?
+bouncetime	!byte 0 ;ticks until slide reversed
+bouncemax	!byte 0 ;holds the reset value for bouncetime
+currentwf	!byte 0 ;waveform ghost register
+waveformdelay	!byte 0 ;ticks until waveform changes
+waveform2	!byte 0	;second waveform
+freqhi		!byte 0 ;
+freqlo		!byte 0 ;
+
+write		!byte 0 ;if zero able to play same sound again, ignored with higher priority sounds
+sfxindex	!byte 0 ;remember index for proper decay
+
+timetoggle	!byte 0 ;for slowing down
+
+soundeffect	!byte $ff ;set to start effect $ff = no new effect
+
+sfx_waveform	!byte wf_noise		;00 step
+		!byte wf_noise		;01 hit monster
+		!byte wf_tripulse	;02 miss
+		!byte wf_noise		;03 player hit
+		!byte wf_saw		;04 player hit by missile
+		!byte wf_triring	;05 spell cast
+		!byte wf_noise		;06 spell fired
+		!byte wf_triring	;07 spell fizzle
+		!byte wf_saw		;08 bow fired
+		!byte wf_tri		;09 throw
+		!byte wf_saw		;0a monster killed
+		!byte wf_noise		;0b player killed
+		!byte wf_noise		;0c open door
+		!byte wf_triringpulse	;0d close door
+		!byte wf_tri		;0e sacrifice gold
+		!byte wf_triring	;0f altar potion
+		!byte wf_tri		;10 pour potion
+		!byte wf_triring	;11 collect yendor
+		!byte wf_triring	;12 sacrifice yendor
+		!byte wf_noise		;13 endgame1
+		!byte 0			;14 silence
+
+sfx_time	!byte 2
+		!byte 7		;hit monster
+		!byte 5		;miss
+		!byte 6		;player hit
+		!byte 15	;player hit by missile
+		!byte 25	;spell cast
+		!byte 10	;spell fired
+		!byte 20	;spell fizzle
+		!byte 10	;bow fired
+		!byte 15	;throw
+		!byte 10	;monster killed
+		!byte 40	;player killed
+		!byte 13	;open door
+		!byte 13	;close door
+		!byte 40	;sacrifice gold
+		!byte 50	;altar potion
+		!byte 24	;pour potion
+		!byte 60	;collect yendor
+		!byte 50	;sacrifice yendor
+		!byte 200	;endgame
+		!byte 20	;silence
+			
+sfx_waveform2	!byte $ff		;step
+		!byte $ff		;hit monster
+		!byte wf_saw		;miss
+		!byte wf_triring	;player hit
+		!byte wf_noise		;player hit by missile
+		!byte wf_triringpulse	;spell cast
+		!byte wf_saw		;spell fired
+		!byte wf_noise		;spell fizzle
+		!byte wf_pulse		;bow fired
+		!byte $ff		;throw
+		!byte wf_noise		;monster killed
+		!byte wf_saw		;player killed
+		!byte wf_triringpulse	;open door
+		!byte wf_noise		;close door
+		!byte $ff		;sacrifice gold
+		!byte $ff		;altar potion
+		!byte $ff		;pour potion
+		!byte $ff		;collect yendor
+		!byte wf_noise		;sacrifice yendor
+		!byte $ff		;endgame
+		!byte 0			;silence
+		
+sfx_waveformdelay
+		!byte $ff	;ticks before using waveform2, bmi = no wf2
+		!byte $ff	;hit monster
+		!byte 4		;miss
+		!byte 10	;player hit
+		!byte 8		;player hit by missile
+		!byte 25	;spell cast
+		!byte 2		;spell fired
+		!byte 19	;spell fizzle
+		!byte 7		;bow fired
+		!byte $ff	;throw
+		!byte 9		;monster killed
+		!byte 5		;player killed
+		!byte 2		;open door
+		!byte 11	;close door
+		!byte $ff	;sacrifice gold
+		!byte $ff	;altar potion
+		!byte $ff	;pour potion
+		!byte $ff	;collect yendor
+		!byte 40	;sacrifice yendor
+		!byte $ff	;endgame1
+		!byte $ff	;silence
+		
+sfx_adsr	!word $0283	;attack/decay/sustain/release
+		!word $08e4	;hit monster
+		!word $30c2	;miss
+		!word $00e3	;player hit
+		!word $03ea	;player hit by missile
+		!word $00ea	;spell cast
+		!word $00e3	;spell fired
+		!word $0eea	;spell fizzle
+		!word $01e4	;bow fired
+		!word $10e3	;throw
+		!word $20e6	;monster killed
+		!word $04ec	;player killed
+		!word $00e3	;open door
+		!word $40e0	;close door
+		!word $00e3	;sacrifice gold
+		!word $0b7b	;altar potion
+		!word $22e7	;pour potion
+		!word $6689	;collect yendor
+		!word $66ab	;sacrifice yendor
+		!word $bf2f	;endgame1
+		!byte $0000	;silence
+
+sfx_freq	!word $32e9
+		!word $0845	;hit monster
+		!word $a800	;miss
+		!word $4000	;player hit
+		!word $4900	;player hit by missile
+		!word $2700	;spell cast
+		!word $af00	;spell fired
+		!word $2700	;spell fizzle
+		!word $0680	;bow fired
+		!word $1200	;throw
+		!word $1472	;monster killed
+		!word $1b00	;player killed
+		!word $f000	;open door
+		!word $5800	;close door
+		!word $3072	;sacrifice gold
+		!word $5000	;altar potion
+		!word $2272	;pour potion
+		!word $ff00	;collect yendor
+		!word $afff	;sacrifice yendor
+		!word $800	;endgame1
+		!byte $0000	;silence
+		
+sfx_slidestep	!word $0a01 	;freq slide amount
+		!word $d000	;hit monster
+		!word $0800	;miss
+		!word $1800	;player hit
+		!word $0800	;player hit by missile
+		!word $0f00	;spell cast
+		!word $1000	;spell fired
+		!word $0f00	;spell fizzle
+		!word $0060	;bow fired
+		!word $0080	;throw
+		!word $0200	;monster killed
+		!word $00a0	;player killed
+		!word $0800	;open door
+		!word $0800	;close door
+		!word $1600	;sacrifice gold
+		!word $0030	;altar potion
+		!word $0060	;pour potion
+		!word $0200	;collect yendor
+		!word $0200	;sacrifice yendor
+		!word $0010	;endgame1
+		!byte $0000	;silence
+		
+sfx_slide	!byte 1 	;slide negative(1), positive(0) or off($ff)
+		!byte 0		;hit monster
+		!byte 1		;miss
+		!byte 1		;player hit
+		!byte 1		;player hit by missile
+		!byte 1		;spell cast
+		!byte 1		;spell fired
+		!byte 1		;spell fizzle
+		!byte 1		;bow fired
+		!byte 1		;throw
+		!byte 1		;monster killed
+		!byte 1		;player killed
+		!byte 0		;open door
+		!byte 1		;close door
+		!byte 0		;sacrifice gold
+		!byte 0		;altar potion
+		!byte 1		;pour potion
+		!byte 0		;collect yendor
+		!byte 0		;sacrifice yendor
+		!byte 1		;endgame1
+		!byte 0		;silence
+
+
+sfx_pulse	!word $0000 
+		!word $0050	;hit monster
+		!word $0010	;miss
+		!word $0000	;player hit
+		!word $0000	;player hit by missile
+		!word $0610	;spell cast
+		!word $0000	;spell fired
+		!word $0000	;spell fizzle
+		!word $0400	;bow fired
+		!word $0000	;throw
+		!word $0030	;monster killed
+		!word $0000	;player killed
+		!word $0150	;open door
+		!word $0150	;close door
+		!word $0000	;sacrifice gold
+		!word $0000	;altar potion
+		!word $0130	;pour potion
+		!word $0000	;collect yendor
+		!word $0000	;sacrifice yendor
+		!word $0000	;endgame1
+		!byte $0000	;silence
+		
+sfx_ringmod	!word $0000 	;voice 3 freq
+		!word $0000	;hit monster
+		!word $0000	;miss
+		!word $01f0	;player hit
+		!word $0000	;player hit by missile
+		!word $81f0	;spell cast
+		!word $0000	;spell fired
+		!word $81f0	;spell fizzle
+		!word $0000	;bow fired
+		!word $0000	;throw
+		!word $0000	;monster killed
+		!word $0000	;player killed
+		!word $9000	;open door
+		!word $9000	;close door
+		!word $0000	;sacrifice gold
+		!word $07f0	;altar potion
+		!word $6700	;pour potion
+		!word $4000	;collect yendor
+		!word $6000	;sacrifice yendor
+		!word $1000	;endgame1
+		!byte $0000	;silence
+
+sfx_bounce	!byte $ff	;reverse slide after x ticks, $ff no bounce 
+		!byte 2		;hit monster
+		!byte 4		;miss
+		!byte 3		;player hit
+		!byte 7		;player hit by missile
+		!byte 2		;spell cast
+		!byte $ff	;spell fired
+		!byte 2		;spell fizzle
+		!byte 6		;bow fired
+		!byte $ff	;throw
+		!byte $ff	;monster killed
+		!byte $ff	;player killed
+		!byte $ff	;open door
+		!byte $ff	;close door
+		!byte 3		;sacrifice gold
+		!byte $ff	;altar potion
+		!byte 18	;pour potion
+		!byte 5		;collect yendor
+		!byte 45 	;sacrifice yendor
+		!byte 32	;endgame1
+		!byte $ff	;silence
+		
+		

@@ -1,0 +1,1145 @@
+;move player around the screen
+;attack monsters
+;display visible area
+;check undertile for action
+;
+;J.Ouellette
+
+playerpointers
+	lda player
+	sta zpa
+	sta zpc
+	lda player+1
+	sta zpb
+	sta zpd
+	rts
+
+move_init
+	
+	jsr playerpointers	;set up zp
+	ldy #0
+	sty shop_flag		;no shop interaction
+	tya			;@;
+	sta (player),y		;put player
+	
+	lda dead
+	beq +
+	lda #0
+	sta hp
+	lda #<deadtxt
+	ldy #>deadtxt
+	jsr load_print_message
+	lda #$b			;player killed sound
+	sta soundeffect
+	jsr death		;animation, display.a
+	jsr fire_button_prompt
+	jmp endgame		;in maze.a
+	
++	lda invisible
+	sta invs
+		
+	lda sleep		
+	beq +
+	bmi moveagain
+	lda #<stuntxt
+	ldy #>stuntxt
+	jsr print_fire
+	jmp monster_turn
+moveagain
+	lda #0
+	sta sleep
+	lda #<unstuntxt
+	ldy #>unstuntxt
+	jsr print_fire
+		
++	lda confusion
+	beq +
+	bmi notconf
+	lda #<confusiontxt
+	ldy #>confusiontxt
+	jsr print_fire
+	jsr playerpointers	;restore pointers
+	ldx #4
+	jsr rndrange
+	tax
+	lda #0
+	sta up,x		;flag for joystick
+	jmp moved	
+notconf	lda #0
+	sta confusion
+	lda #<unconfusiontxt
+	ldy #>unconfusiontxt
+	jsr print_fire
+
++	lda blind
+	bpl +
+	lda #0
+	sta blind
+	lda #<unblindtxt
+	ldy #>unblindtxt
+	jsr print_fire
+
++	lda poison
+	bpl +
+	lda #0
+	sta poison
+	lda #<unpoisontxt
+	ldy #>unpoisontxt
+	jsr print_fire	
+	
++	lda might
+	bpl +
+	lda #0
+	sta might
+	lda #<unmighttxt
+	ldy #>unmighttxt
+	jsr print_fire
+	
++	jsr playerpointers	
+;----------------------------------------------
+
+joymove	jsr waitforvblank
+moved	jsr check_up
+	bne +
+	jsr moveup
+	jmp moveplayer
++	jsr check_down
+	bne +
+	jsr movedown
+	jmp moveplayer
++	jsr check_left
+	bne +
+	jsr moveleft
+	jmp moveplayer
++	jsr check_right
+	bne +
+	jsr moveright
+	jmp moveplayer
++	jsr check_button_tap
+	bne +
+pass_t	lda #<waittxt
+	ldy #>waittxt
+	jsr load_print_message
+	jmp monster_turn
++	jsr check_button
+	bne key_check
+	jmp show_menu		;menu.a
+key_check
+	lda last_key
+	cmp #"U"		;use iterm
+	bne +
+	jsr trap_button
+	jsr save_message
+	jmp inventory_use	;in menu.a, as with others jmps below, unless noted
+	
++	cmp #"R"		;dRop
+	bne +
+	jsr trap_button
+	jsr save_message
+	jmp inventory_drop
+	
++	cmp #"T"		;throw/shoot
+	bne +
+	jsr trap_button
+	jsr save_message
+	jmp throw_item
+	
++	cmp #"Z"		;status screen (ztats)
+	bne +
+	jsr save_message
+	jsr trap_button
+	jmp status
+
++	cmp #"G"		;get, pick up item
+	beq +
+	cmp #"."
+	bne ++
++	jsr trap_button
+	jsr save_message
+	jmp pick_up_item
+	
+++	cmp #211		;shift-S save game
+	bne +
+	jsr trap_button
+	lda under
+	cmp #STAIRS
+	beq sg_key
+	lda #<nosavetxt
+	ldy #>nosavetxt
+	jsr load_print_message
+	jsr playerpointers
+	jmp joymove
+sg_key	jsr save_message
+	jsr recolor
+	jmp save_game	
+
++	cmp #62			;shift-. '>' use stairs
+	bne +
+	jsr trap_button
+	lda under
+	cmp #STAIRS	
+	beq st_key
+	lda #<nostairstxt
+	ldy #>nostairstxt
+	jsr load_print_message
+	jsr playerpointers
+	jmp joymove
+st_key	jsr save_message
+	jmp use_stairs_key
+	
++	cmp #209		;shift-Q quit game
+	bne +
+	jsr trap_button
+	jsr save_message
+	jsr recolor
+	jmp quit_game
+	
++	cmp #198		;shift-F toggle fire_button_prompt
+	bne +
+	jsr trap_button
+	lda fb_prompt_toggle	;in save game ram
+	eor #1
+	sta fb_prompt_toggle
+	beq fb_pon
+	lda #<promptofftxt
+	ldy #>promptofftxt
+	bne fb_mes
+fb_pon	lda #<promptontxt
+	ldy #>promptontxt
+fb_mes	jsr load_print_message
+	jsr playerpointers
+	jmp joymove	
+	
++	cmp #193		;shift-A toggle auto pickup
+	bne +
+	jsr trap_button
+	lda auto_pickup_toggle	;in save game ram
+	eor #1
+	sta auto_pickup_toggle
+	bne ap_on
+	lda #<autopickupofftxt
+	ldy #>autopickupofftxt
+	bne ap_mes
+ap_on	lda #<autopickupontxt
+	ldy #>autopickupontxt
+ap_mes	jsr load_print_message
+	jsr playerpointers
+	jmp joymove						
+	
++	cmp #"E"		;enter shop
+	bne +
+	jsr trap_button
+	jsr save_message
+	jmp enter_shop_key	
+	
++	cmp #"C"		;close door
+	bne +
+	jsr trap_button
+	jsr save_message
+	jmp close_door
+	
++	cmp #"*"		;pass
+	bne +
+	jsr trap_button
+	jmp pass_t		;see above
+	
++	cmp #192		;shift-* extended pass
+	bne +
+	jmp pass_t		;see above
+	
++	cmp #"P"		;pray - sac gold at altar
+	bne +
+	jsr trap_button
+	jmp use_altar_key
+	
++	cmp #"M"
+	bne +
+	jmp messagescreen	;see below	
+	
++	cmp #$85		;'f1' change dungeon color
+	bne +
+-	dec mapcolor
+	lda mapcolor
+	and #%00001111
+	beq -			;no black txt
+	jsr change_map_color
+	jsr trap_button
+	jmp joymove 
++	cmp #$86		;'f3' change text color
+	bne +
+-	dec txtcolor
+	lda txtcolor
+	and #%00001111
+	beq -			;no black txt
+	jsr recolor
+	jsr trap_button
+	jmp joymove	
++	cmp #$87		;'f5' toggle gfx/text
+	bne +
+	jsr trap_button
+	jsr save_message
+	jmp switch_gfx
++	cmp #$88		;'f7' toggle sfx/musix	
+	bne +
+	jsr trap_button
+	jsr save_message
+	jmp sound_toggle
++	
+	jmp joymove
+
+moveplayer
+	ldy #0
+	lda (zpa),y
+	cmp #WALL
+	bne +
+	lda confusion
+	bne nomove
+	jmp joymove
++	jsr check_for_monsters	;returns carry clear if monster char
+	bcs noattack
+	jmp playerattack
+noattack
+	lda monster+2 		;being held?
+	ora monster+8		;check monster status flags
+	ora monster+14
+	ora monster+20
+	ora monster+26
+	ora monster+32
+	and #%00000010
+	beq +
+	lda #<heldtxt
+	ldy #>heldtxt
+	jsr print_fire
+	jmp monster_turn
+	
++	jsr putunder		;replace uncovered tile
+	lda (zpa),y
+	sta under		;new under tile
+	lda #$0			;@;
+	sta (zpa),y		;put player
+	lda zpa
+	sta player
+	lda zpb
+	sta player+1
+	jsr reveal
+	lda #0
+	sta soundeffect
+nomove	jsr checkunder
+	jmp monster_turn
+!if model = c64 {		
+messagescreen			;show the message screen
+	jsr clear_map_color
+	lda #1
+	sta screen		;flag for IRQ to stop splitting screen
+	jsr waitforvblank
+	lda txtcolor
+	jsr clear_color
+-	jsr check_button_tap	;message screen wait loop
+	beq ex_ms
+	lda last_key
+	cmp #$5f		;back arrow key
+	beq ms_tp
+	cmp #$0d		;return key
+	beq ms_tp
+	cmp #$20		;space
+	bne -
+ms_tp	jsr trap_button	
+ex_ms	lda #0
+	jsr clear_color
+	jsr waitforvblank
+	lda #0
+	sta screen
+	jsr restore_map_color
+	jsr recolor		;menu.a
+	jsr print_status
+	jsr playerpointers	;restore temp zp
+	jmp joymove		
+}		
+;----------------------------------------------
+		
+playerattack
+	lda #0
+	sta hitflag
+	sta atk2
+	sta tempa
+	lda zpa
+	sta zpc
+	sta location
+	lda zpb
+	sta zpd
+	sta location+1
+	jsr find_monster	;sets tempy & tempmonster
+	ldx equipped_weapon
+	bmi +
+	jsr find_item
+	ldy #3	
+	lda (itemlo),y
+	cmp #7			;weapon of haste
+	bne +
+	inc atk2		;flag for double strike chance
++	cmp #5			;weapon of true aim?
+	bne +
+	sta temps		;5 is also the bonus to agi
+	beq atkcheck		;branch always
++	cmp #9			;weapon of maladroit?
+	bne nobonus
+	lda #-5
+	sta temps
+	bne atkcheck		;branch always
+nobonus
+	lda #0
+	sta temps		;agility bonus/penalty from weapon
+atkcheck			;reentry after successful second attack roll
+	jsr agility_check	;apply temps to armor penalty and roll for hit
+	bcs doneaiming		;carry set, player won roll
+	jmp missmonster		;carry clear, monster won roll
+doneaiming
+	lda #1
+	jsr sfxwait
+	ldx tempmonster
+	stx tempx
+	clc
+	ldx equipped_weapon
+	bmi noweapon
+	jsr find_item
+	ldy #1
+	lda (itemlo),y		;weapon number is also base damage
+	tax
+	inx			;i.e. weapon #4(x=6) returns 0-5
+	inx
+	jsr rndrange		;add 1 to x+1 ie weapon #4 1-6 damage
+	adc #1
+	sta tempa
+	iny
+	lda (itemlo),y		;+ weapon bonus
+	adc tempa
+	sta tempa
+	jsr is_cursed		;in inv.a
+	bne nocurse		;weapon cursed?
+	lsr tempa		;then halve weapon damage
+nocurse	ldy #3
+	lda (itemlo),y
+	cmp #4			;of magic
+	bne notmag
+	lda int			;add int instead of str
+	lsr			;add 3/4 int
+	sta tempr
+	lsr
+	adc tempr
+	adc intbonus
+	adc tempa
+	jmp mondef
+notmag	cmp #8			;of holy power
+	bne noweapon 
+	lda tempundead
+	beq noweapon
+	asl tempa		;double power attacking undead
+noweapon
+	lda str			;add 3/4 str
+	lsr
+	sta tempr
+	lsr
+	adc tempr
+	ldx might		;might bonus?
+	beq +
+	adc tempr		;bonus = +str/2
++	adc tempa		;add weapon damage
+	adc strbonus		;from rings/armor
+	
+mondef	ldx crit_flag
+	beq +
+	asl			;critical hit double damage 	
++	ldx tempmonster
+	sec
+	sbc monster_def,x
+	bcs +
+	lda #0			;if negative, change to 0
++	sta hitflag
+	sta tempa
+	beq nodamage
+	jsr hurt_monster	;in monster.a, uses tempa
+	bcc printoutcome    	;monster killed by attack, message printed
+	lda tempmonster+2
+	and #%10010111		;hit monsters recover from sleep, fear, and
+	sta tempmonster+2	;confusion unless special stat is applied
+	ldx #1
+	!byte $2c
+nodamage
+	ldx #2			;hit but no damage	
+	jmp printoutcome
+missmonster
+	lda #2			;miss sound
+	jsr sfxwait
+	ldx tempmonster
+	stx tempx
+	ldx #3
+printoutcome
+	lda #<killtxt
+	ldy #>killtxt
+	jsr findnextwordload
+	jsr you_blank_the_monster	;print message outcome, monster.a
+	
+	lda equipped_weapon
+	bmi attackout		;no weapon, no effect
+	ldy #3
+	lda (itemlo),y
+	sta tempa
+	lda hitflag
+	beq attackout		;missed or no damage
+	cmp #$ff		;killed
+	beq attackoutkill
+	lda atk2		;attack twice flag
+	bne attackagain
+	lda tempa
+	cmp #3
+	bcs attackout		;stunning,terror,poison
+	jsr rnd
+	bmi attackout	
+	ldx #0
+	ldy #1			;melee effect flag
+	lda tempa
+	jsr affect_monster
+	lda tempa
+	bmi attackout
+	jsr print_message
+	bcs attackout
+attackoutkill
+	lda tempa
+	cmp #3			;weapon of blood
+	bne attackout
+	ldx tempx
+	lda monster_hp,x
+	lsr
+	lsr
+	clc
+	adc hp
+	bcc +
+	lda #$ff
++	sta hp
+	lda maxhp
+	cmp hp
+	bcs attackout
+	sta hp 	
+attackout
+	jsr fire_button_prompt	;tell user to press fire to cont
+	jsr save_monster
+	jsr become_visible
+	jmp monster_turn
+
+attackagain	;for weapons "of haste"
+	jsr rnd
+	cmp #32
+	bcs attackout		;1 in 8 chance for second attack
+	lda location
+	sta zpc
+	lda location+1
+	sta zpd
+	lda #0
+	sta atk2
+	sta hitflag
+	jmp atkcheck
+	
+;----------------------------------------------
+;agility check, also used in menu.a for bows
+;enter with temps as bonus/penalty
+agility_check 
+	lda #0
+	sta crit_flag
+	ldx #25
+	jsr rndrange
+	ldx tempmonster
+	adc monster_agi,x	;to hit the monster: 
+	sta tempx		;d20+agi+( > d20+monster_agi
+	
+	jsr d20
+	beq acout		;roll zero, automatically fail
+	cmp #20
+	bne +
+	inc crit_flag		;natural 20, critical hit
+	bcs acout		;branch always
++	clc
+	adc agi
+	sta tempr
+				;armor penalty		
+	ldx equipped_armor	;minimum str req = armor*2
+	bmi noarmpen		;penalty = str - msr+4
+	jsr find_item
+	ldy #1
+	lda (itemlo),y
+	asl
+	clc
+	adc #4
+	sta tempz
+	lda str
+	sec
+	sbc tempz
+	bcc +			;if penalty > 0 then pen = 0
+noarmpen
+	lda #0
+	clc
++	adc tempr
+	adc temps		;bonus/pen for weapon
+	bpl +			;agility now negative?
+	lda #0			;then set to 0
++	cmp tempx		;compare to monsters agi
+acout	rts			;carry clear, monster won roll
+				;carry set, player won
+	
+;----------------------------------------------
+		
+
+moveup	lda zpc			;returns tile to move to in zpa,zpb
+	sec
+	sbc #40
+	jmp +
+		
+moveleft
+	lda zpc
+	sec
+	sbc #1
++	sta zpa
+	lda zpd
+	sbc #0
+	sta zpb
+	clc
+	rts		
+
+movedown
+	lda zpc
+	clc
+	adc #40
+	jmp +
+
+moveright
+	lda zpc
+	clc
+	adc #1
++	sta zpa
+	lda zpd
+	adc #0
+	sta zpb
+	clc
+	rts
+
+
+;----------------------------------------------
+unreveal
+	sec			;clear color around player
+	lda player		;screen address - $f6 = x-6 y-6
+	sbc #$f6		;13x13 block
+	sta cccol		;init zp selfmod code
+	sta ccmod
+	lda player+1
+	sbc #0
+	sta cccol+1
+	clc
+	adc #$d0		;point to color mem
+	sta ccmod+1
+	ldx #12			;13 rows
+	jmp clearcode		;rts
+
+;----------------------------------------------
+;line of sight from WhackE by Aleksi Eeben/Steve McCrea
+
+reveal	jsr unreveal
+revealsk
+	jsr get_player_xy	;monster.a
+	clc
+	lda blindflag
+	adc blind
+	beq +
+	lda #2
+	bne blx
++	lda light
+	beq +
+	lda #2
++	adc #4
+blx	sta viewsegment+1
+	tax
+	dex
+	stx _segxok+1
+
+	;inc BO_COLOR
+	lda #$01		;segment 1
+	sta addx
+	lda #$ff
+	sta addy
+	jsr viewsegment
+
+	lda #$01		;segment 2
+	sta addy
+	jsr viewsegment
+	lda #$ff		;segment 3
+	sta addx
+	jsr viewsegment
+
+	lda #$ff		;segment 4
+	sta addy
+	;;
+	
+viewsegment
+	lda #$A0		;modded
+	sta tempz
+	ldy playerx
+	sty zpc
+		
+_segxlp
+	ldx playery
+	jsr seeblock
+	bcs _segxok
+	jsr drawline
+	dec tempz
+	beq _segxok
+	lda zpc
+	clc
+	adc addx
+	sta zpc
+	tay
+	bpl _segxlp		;always branch
+		
+_segxok	lda #$A0		;modded
+	sta tempz
+	lda playery
+	sta zpc
+		
+_segylp	lda zpc
+	clc
+	adc addy
+	sta zpc
+	tax
+
+	ldy playerx
+	jsr seeblock
+	bcs _rts
+	jsr drawline
+	dec tempz
+	bne _segylp
+_rts	rts
+;-	draw one line-of-sight
+
+drawline
+	clc
+	lda tempz
+	sta tempy
+
+drawlinelp
+	txa
+	clc
+	adc addy
+	tax
+
+	tya
+	clc
+	adc addx
+	tay
+		
+	dec tempy
+	beq +
+
+	clc			;x=y co-ord
+	lda ylo,x
+	sta zpa
+	lda yhi,x
+	sta zpb			;screen mem
+	!if model = c16 {adc #$fc}
+	!if model = c64 {adc #$d0}
+	sta zpd			;color mem
+	lda (zpa),y
+		
+	cmp #WALL		;view blocking characters
+	beq col_1
+	cmp #CLOSEDDOOR
+	beq col_1
+	cmp #$00		;player
+	beq pcol_1
+	clc
+		
+col_1	lda zpd
+	sta zpb
+	lda mapcolor
+	sta (zpa),y
+	bcc drawlinelp
++	rts
+
+pcol_1	clc
+	lda zpd
+	sta zpb
+	lda #LTGREY
+	sta (zpa),y
+	bcc drawlinelp
+	rts
+
+;-	see one block
+
+seeblock
+	clc			;x=y co-ord
+	lda ylo,x
+	sta zpa
+	lda yhi,x
+	sta zpb			;screen mem
+	!if model = c16 {adc #$fc}
+	!if model = c64 {adc #$d0}
+	sta zpd			;color mem
+	lda (zpa),y
+		
+	cmp #WALL		;view blocking characters
+	beq col_2
+	cmp #CLOSEDDOOR
+	beq col_2
+	cmp #$00		;player
+	beq pcol_2
+	clc
+		
+col_2	lda zpd
+	sta zpb
+	lda mapcolor
+	sta (zpa),y
+ 	rts
+
+pcol_2	clc
+	lda zpd
+	sta zpb
+	lda #LTGREY
+	sta (zpa),y
+ 	rts
+
+;----------------------------------------------
+putunder
+	lda under
+	ldy #0
+	sta (zpc),y
+	rts
+;----------------------------------------------
+;check under
+
+getarrows
+	lda #1
+	!byte $2c
+getgold	lda #0
+	sta getout+1		;self-mod below
+	jsr new_message
+	ldx getout+1
+	lda gold,x		;x=1=arrows
+	cmp carrymax,x		;100,25
+	bne +
+	lda #<bagtxt
+	ldy #>bagtxt
+	jmp getout
+		
++	jsr getflooritem
+		
+	lda tempa
+	clc
+	adc gold,x
+pilemax2
+	cmp carrymax,x
+	bcc +
+	lda carrymax,x
++	sta gold,x
+	lda tempa
+	jsr print_num		
+	lda #<goldtxt
+	ldy #>goldtxt
+getout	ldx #$A0		;modded, 0 or 1
+	jsr findnextwordload
+	jmp finish_message
+		
+;enter routine here
+menu_under
+	ldx #1			;set menu option only
+	!byte $2c
+checkunder
+	ldx #0			;open door option
+	lda #17			;default fourth menu option "cancel"
+	sta boption+3
+	lda under		;what's under the player?	
+	cmp #GOLD		;sets last menu option too
+	beq getgold
+	cmp #ARROW
+	beq getarrows
+	cmp #ARMOR
+	beq itemunder
+	cmp #WEAPON
+	beq itemunder
+	cmp #RING
+	beq itemunder
+	cmp #FOOD
+	beq itemunder
+	cmp #AMULET
+	beq itemunder
+	cmp #BOOK
+	beq itemunder
+	cmp #POTION
+	beq itemunder
+	cmp #BOW
+	beq itemunder
+	cmp #ALTAR
+	beq altarunder
+	cmp #SHOP
+	beq shopunder
+	cmp #STAIRS
+	beq stairunder
+	cmp #CLOSEDDOOR
+	beq opendoor
+	cmp #OPENDOOR
+	bne +
+	lda #10			;close door option
+optout	sta boption+3
++	rts
+
+itemunder
+	lda #12
+	dex
+	beq optout		;only set the menu option
+	lda auto_pickup_toggle
+	beq +
+	jsr save_message
+	jmp pick_up_item
++	jsr new_message
+	jsr print_a
+	jsr find_floor_item
+	tya
+	clc
+	adc zpc			;I have to juggle these pointers
+	sta zpa			;because I am a bad progammer :P
+	lda zpd
+	sta zpb
+	jsr print_item
+	jmp scroll_message
+
+opendoor
+	lda #$0c		;open door sound
+	sta soundeffect
+	lda #OPENDOOR
+	sta under
+	jsr become_visible
+	lda #10			;close door option
+	sta boption+3
+	lda #<doortxt
+	ldy #>doortxt
+	jmp load_print_message
+
+stairunder
+	lda #11			;use stairs option
+	dex
+	beq optout
+	lda #<stairtxt
+	ldy #>stairtxt
+	jmp load_print_message
+				
+altarunder
+	lda #22			;use altar option
+	dex
+	beq optout
+	jsr new_message
+	lda #<altartxt
+	ldy #>altartxt
+	jsr load_print_string
+	ldx god
+	inx
+	jsr findnextword
+	jmp finish_message
+	
+shopunder
+	lda #26
+	dex 
+	beq optout
+	jsr new_message
+	lda #<shoptxt
+	ldy #>shoptxt
+	jsr load_print_string
+	ldx shop_type
+	inx
+	jsr findnextword
+	jmp finish_message
+	
+getflooritem
+	lda #FLOOR
+	sta under
+	jsr become_visible
+	jsr find_floor_item	;locate item at player's screen address
+	jsr delete_floor_item	;delete it from list, sets tempa to value
+	lda #<yougettxt
+	ldy #>yougettxt
+	jmp load_print_string		
+;----------------------------------------------
+	
+fire_button_prompt
+	lda dead		;don't skip prompt if killed
+	bne +
+	lda fb_prompt_toggle
+	bne fbwaitout
++	ldx #24
+	ldy #33
+	clc
+	jsr PLOT
+	ldx #0
+-	lda firetxt,x
+	jsr CHROUT
+	inx
+	cpx #5
+	bne -
+
+	ldx #0		;animate button
+	stx tempx
+	ldy #0
+		
+fbloop	jsr check_button_tap	;wait for button
+	beq fbwaitout		
+	iny
+	bne fbloop
+	inc tempx
+	lda tempx
+	cmp #5			;nested loop
+	bne fbloop		;to delay char
+	lda #0			;animation
+	sta tempx
+	lda buttonani,x
+	sta TEXTSCREEN+$3e6
+	inx
+	cpx #7
+	bne fbloop
+	ldx #0
+	beq fbloop	        ;branch always 
+fbwaitout
+	jsr trap_all		;stops you from ramming into enemies over and over
+	jmp print_status	;redraws line without prompt
+	;rts
+		
+;----------------------------------------------
+
+check_for_monsters
+
+!if model = c64 {		
+ 	cmp #230	;return carry clear
+ 	bcc nomonster 	;if character matches
+ 	cmp #254	;an enemy
+ 	rts
+nomonster
+	sec
+	rts
+}
+
+!if model = c16 {
+	cmp #1		;return carry clear
+ 	bcc nomonster 	;if character matches
+ 	cmp #29		;an enemy
+ 	bcc yesmonster
+ 	cmp #65
+ 	bcc nomonster
+ 	cmp #91
+ 	rts
+nomonster
+	sec
+yesmonster
+	rts
+}
+
+
+become_visible
+	lda #0
+	sta invs
+	rts
+		
+firetxt	!byte 158	;yellow
+	!pet "FIRE"
+		
+buttonani
+!if model = c64 {
+	!byte 219,220,221,222,222,221,220
+}
+!if model = c16 {
+	!byte 227,247,248,98,121,121,98,248,247
+}
+doortxt		!pet $fe,"open a door",0
+closetxt	!pet $fe,"close",$fd,"door",0
+nodoortxt       !pet "There is no door here",0
+		!pet "The door is broken",0
+		!pet $fe,"are already closing the door",0
+nostairstxt	!pet "There are no stairs here",0
+nosavetxt	!pet "You must stand on stairs to save",0
+
+promptofftxt	!pet "Fire button prompt off",0
+promptontxt	!pet "Fire button prompt on",0
+
+autopickupofftxt	
+		!pet "Auto pick-up off",0
+autopickupontxt	!pet "Auto pick-up on",0
+		
+waittxt		!pet "Wait",0
+		
+invfulltxt	!pet $fe,"can't fit it in your pack!",0
+goldtxt		!pet " gold",0
+arrowstxt	!pet " arrows",0
+bagtxt		!pet "Your purse is full",0
+quivertxt	!pet "Your quiver is full",0
+				
+confusiontxt	!pet $fe,"are confused",0
+unconfusiontxt	!pet $fe,"can think clearly again",0
+stuntxt		!pet $fe,"can't move!",0
+unstuntxt	!pet $fe,"can move again",0
+unmighttxt	!pet "Your strength fades",0
+unblindtxt	!pet "Your vision begins to return",0
+unpoisontxt	!pet $fe,"feel well again",0
+heldtxt		!pet $fe,"are held in place!",0
+deadtxt		!pet $fe,"are dead",0
+		
+stairtxt	!pet "There is a staircase here",0
+		
+shoptxt		!pet $fe,"stand before a",0
+shopnametxt	!pet " Fletcher",0
+		!pet " Provisioner",0
+		!pet " Junk Shop",0
+		!pet "n Alchemist",0
+
+altartxt	!pet "An altar to ",0
+godnametxt	!pet "Ingerham",0
+		!pet "Jeriel",0
+		!pet "Jacek",0
+		!pet "Kim",0
+		
+		
+carrymax	!byte 200,25
+
+ylo		!byte $00,$28,$50,$78,$a0,$c8,$f0,$18,$40,$68,$90,$b8,$e0,$08,$30,$58,$80,$a8,$d0,$f8
+!if model =  c64 {
+yhi             !byte $08,$08,$08,$08,$08,$08,$08,$09,$09,$09,$09,$09,$09,$0a,$0a,$0a,$0a,$0a,$0a,$0a
+} else {
+yhi             !byte $0c,$0c,$0c,$0c,$0c,$0c,$0c,$0d,$0d,$0d,$0d,$0d,$0d,$0e,$0e,$0e,$0e,$0e,$0e,$0e
+}
+
+;this code moved to zero page in init.a
+
+zpcode
+ccrowl	ldy #12			;13 columns per row
+	lda ccmod		;pointer out top of screen?
+	cmp #$27
+	lda ccmod+1
+	sbc #$d8
+	bcc nextcc		;out of bounds
+cccode	lda $A000,y		;screen mem check
+	cmp #WALL		;walls aren't darkened
+	beq +
+	lda #0
+	sta $A000,y		;color mem store
++	dey
+	bpl cccode
+nextcc	dex
+	bmi ccend		;columns done?
+	clc
+	lda cccol
+	adc #$28
+	sta cccol
+	sta ccmod
+	bcc +
+	inc cccol+1
+	inc ccmod+1
++	cmp #$1c		;out the bottom of the screen?
+	lda ccmod+1
+	sbc #$db
+	bcc ccrowl
+ccend	rts
+	!warn *-zpcode
+
+!eof
+

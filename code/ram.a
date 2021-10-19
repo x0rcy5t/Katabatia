@@ -1,0 +1,238 @@
+;----------------------------------------------
+;RAM
+;----------------------------------------------
+;Definition of data that would assemble,
+;but takes up prg space. See ramsym.a for the
+;actual assembled addresses. This is for
+;reference.
+;
+;Saved ram is initialised on new game or 
+;loaded from save file. Unsaved ram is
+;set when it is used, and is a workspace
+;for the program. RAM should align to a 
+;page since the (ZP),y is used on it and
+;the first three tables are not longer
+;than that page.
+;
+;----------------------------------------------
+;Saved Ram
+;----------------------------------------------
+
+start_of_file
+
+	;weapon type 0weapon 1armor 2ring 3potion 4book 5bow 6ration 7amulet 8arrow 9gold
+	
+inventory	;$ff = empty slot
+	!byte $00,0,0,0,0;0 1 3 2 1  +3 Short Sword of Poison
+	!byte $00,0,0,0,0;^ ^ ^ ^ ^
+	!byte $00,0,0,0,0;| | | | |
+	!byte $00,0,0,0,0;T N + S I
+	!byte $00,0,4,0,0;y a V p d
+	!byte $00,0,0,0,0;p m a e e
+	!byte $00,0,0,0,0;e e l c n
+	!byte $00,4,0,0,0;  / u i t
+	!byte $00,8,0,0,0;  b e a i
+	!byte $00,9,0,0,1;  a / l f
+	!byte $00,9,0,0,0;  s M   i
+	!byte $00,1,0,5,0;  e a   e
+	!byte $00,0,0,0,1;    g   d ident also curse flag
+	!byte $00,0,0,0,0;  d i     01 = identified
+	!byte $00,3,0,0,0;  m c     81 = ident & curse
+	!byte $00,4,0,2,0;  g       00 = unidentified
+	!byte $00,0,0,0,0;  / t     80 = unident & curse
+	!byte $00,0,0,0,0;  d y
+	!byte $00,0,0,0,0;  e p     
+	!byte $00,0,0,0,0;  f e
+	!byte $00,0,0,0,0;  /
+	!byte $00,0,0,0,0;  #
+	!byte $00,0,0,0,0
+	!byte $ff,0,0,0,0
+
+;	*=$..78
+
+
+monster !byte $ff,0,0,0,0,0	;Type
+	!byte $ff,0,0,0,0,0	;HP
+	!byte $ff,0,0,0,0,0	;status flag %1111111x poison,sleep,confuse,blind,fear,chase,hold
+	!byte $ff,0,0,0,0,0	;under tile
+	!byte $ff,0,0,0,0,0	;screenlocation(word)
+	!byte $ff,0,0,0,0,0
+mend	!byte $fe		;these endmarkers are overwritten
+				;when map is cleared, afterwards
+
+flooritems	;same format as inventory but with two byte screen location
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+	!byte $ff,0,0,0,0,0,0
+mend2	!byte $fe	;end of list
+	
+equipped_weapon
+	!byte $0
+equipped_armor
+	!byte $0
+equipped_ring
+	!byte $0
+equipped_bow
+	!byte $0
+	
+unknowntable	;shuffled each game
+		;points to random unknown
+		;potion desription. changed to $ff when known(maybe)
+	!byte 3,2,1,5,8,0,6,4,9,7,10
+constantunknown		;the last three potions
+	!byte 11,12,13	;always have the same description.
+	
+hp		!byte 30
+sp		!byte 120
+restorerate	!byte 5,8	;hp,sp
+hunger		!byte 32
+hungerrate	!byte 6
+
+int		!byte 4
+agi		!byte 4
+str		!byte 4
+maxhp		!byte 150             
+maxsp		!byte 125
+exp		!byte $30,$30,$30,$30,$30
+next		!byte $30,$30,$30,$30	;last zero implied			 
+
+turns		!byte $30,$30,$30,$30,$30,$30
+end_of_ff	;after here init as 0		
+
+		!byte 0	;end of string marker for turns
+explevel	!byte 0
+restorecount	!byte 0,0	
+hungercount	!byte 0
+gold		!byte 0
+arrows		!byte 0
+sacrifice	!byte 0
+
+statustable	;starts two bytes back of poison
+saves		!byte 0	;free save from death spell
+
+poison		!byte 0
+sleep		!byte 0
+confusion	!byte 0
+might		!byte 0
+blind		!byte 0
+
+armoreffects
+
+blindflag	!byte 0
+noisy		!byte 0
+invisible	!byte 0
+satiation	!byte 0
+light		!byte 0
+mana		!byte 0
+strbonus	!byte 0
+intbonus	!byte 0
+resist		!byte 0
+antimagic	!byte 0
+rank		!byte 0
+
+level		!byte 0
+yend		!byte 0	;flag for stairs up/down
+darkone		!byte 0	;killed the dark one?
+challenge	!byte 0 ;sacrificed amulet?
+
+god		!byte 0
+class		!byte 0
+
+loaded		!byte 0
+
+txtcolor	!byte 0
+mapcolor	!byte 0
+
+
+filename	!pet "s0:"		;scratch file command
+tapename	!pet "k."	
+name		!pet "Morteno "
+		!byte 0
+location
+		!word $0870	;temp location for looking
+		
+mapseed 	!byte 0,0,0,0
+
+monster_hp	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+monster_atk	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+monster_int	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+monster_agi	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+monster_def	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+monster_kills	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+
+fb_prompt_toggle
+		!byte 0
+auto_pickup_toggle
+		!byte 0
+		
+end_of_file
+	     *=*
+;----------------------------------------------
+;Unsaved ram
+;----------------------------------------------
+
+
+
+dead	!byte 0 ;is player dead?
+levelup	!byte 0 ;player get level up?
+invs	!byte 0 ;is player invisible (for temporary visiblity)
+
+under	!scr" "		;tile under player
+
+num1	!byte 0		;bytes for math
+
+scrollreg
+num2	!byte 0
+
+bkcolor	!byte 0
+
+up	!byte 0	;joystick varibles
+down	!byte 0
+left	!byte 0
+right	!byte 0
+button	!byte 0,0
+joytemp	!byte 0
+
+scrolly
+select	!byte 0 ;current selected line of menu
+
+option 	!byte 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0
+boption !byte 0,0,0,0 ;the last four options, used for lower screen menu.
+	;menu pointers: ldx select
+	;to item list	lda option,x
+	
+numberstring	!byte 0,0,0
+		!byte 0
+	     
+vblank		!byte 0 	;flag to wait for next vblank
+screen		!byte 0		;flag for showing only the
+				;text screen
+animate		!byte 0		;timer for char animation
+
+case		;for init.a letter grid, 64 or 0
+monsterx 	!byte 0
+monstery 	!byte 0
+
+sfxtoggle	!byte 0
+shop_flag	!byte 0
+crit_flag	!byte 0
+
+
+end_of_zero     !byte 0
+
+shop_inventory = $c300
+shop_price = shop_inventory + $78
+
+shop_type = shop_price + 25
+temp_message = shop_type + 1
+
+filenames = $c500
+

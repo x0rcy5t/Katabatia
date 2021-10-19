@@ -1,0 +1,1381 @@
+;MAZE GENERATOR
+;BASIC ORIGINAL BY CHARLES BOND
+;ML CODE BY GARY E. MARSA
+;Converted to ACME compatible format by Jeffrey Ouellette
+;From Compute's First Book of C64 Games
+
+;sys49160
+			
+			
+mazevars	!byte $01,$00,$d8,$ff,$ff,$ff,$28,$00
+
+
+make_maze	jsr clear_map_color
+		lda #FLOOR
+		ldx #$0
+		lda #32
+-		sta MAPSCREEN,x
+		sta MAPSCREEN+210,x
+		sta MAPSCREEN+210+210,x
+		sta MAPSCREEN+210+210+210,x
+		inx
+		cpx #210
+		bne -
+		
+		ldx #0
+		lda #$ff
+-		sta shop_inventory,x
+		inx
+		bne -
+		
+gomaze		lda mapseed	;seed makes same set of dungeons.
+		sta sr1
+		lda mapseed+1	;ram.a
+		sta sr1+1
+		lda mapseed+2
+		sta sr2
+		lda mapseed+3
+		sta sr2+1
+		
+		ldx #113	;clear list of monsters and floor items
+		lda #$ff
+-		sta monster,x
+		dex
+		bpl -
+		lda #$fe
+		sta mend	;replace overwritten endmarker
+		lda #0
+		sta monster+2 	;fill status byte with 0
+		sta monster+8
+		sta monster+14
+		sta monster+20
+		sta monster+26
+		sta monster+32
+		
+		lda #FLOOR
+		sta under
+remakeskip	!if model = c16 {sta tempflag}	;zero if redrawing map
+		lda #$ac
+		sta zpmapa
+		lda #$2b
+		sta zpmapc
+		lda #>MAPSCREEN
+		sta zpmapb
+		sta zpmapd
+		
+		ldx #$00
+		stx option	;used as flag in speciallevel/endlevel
+		stx tempz	;cleared for room width,
+		stx tempundead	;room height, in speciallevel routine
+-		ldy #$00
+		lda #WALL	;fill map
+--		sta (zpmapc),y
+		iny
+		cpy #$21
+		bne --
+		clc
+		lda zpmapc
+		adc #$28
+		sta zpmapc
+		bcc +
+		inc zpmapd
++		inx
+		cpx #$13
+		bne -
+		ldy #$00
+		lda #$04
+		sta (zpmapa),y
+mazeloop	jsr rnd
+		and #$03
+		sta $ad
+back		tax
+		asl
+		tay
+		clc
+		lda mazevars,y
+		adc zpmapa
+		sta $aa
+		lda mazevars+1,y
+		adc zpmapb
+		sta $ab
+		clc
+		lda mazevars,y
+		adc $aa
+		sta zpmapc
+		lda mazevars+1,y
+		adc $ab
+		sta zpmapd
+		ldy #$00
+		lda (zpmapc),y
+		cmp #WALL
+		bne +
+		txa
+		sta (zpmapc),y
+		lda #FLOOR
+		sta ($aa),y
+		lda zpmapc
+		sta zpmapa
+		lda zpmapd
+		sta zpmapb
+		jmp mazeloop
++		inx
+		txa
+		and #$03
+		cmp $ad
+		bne back
+		lda (zpmapa),y
+		tax
+		lda #FLOOR
+		sta (zpmapa),y
+		cpx #$04
+		beq mazedrawn
+		txa
+		asl
+		tay
+		ldx #$02
+-		sec
+		lda zpmapa
+		sbc mazevars,y
+		sta zpmapa
+		lda zpmapb
+		sbc mazevars+1,y
+		sta zpmapb
+		dex
+		bne -
+		jmp mazeloop
+		
+mazedrawn	jsr wallgraphics	;change wall graphics if necessary
+        
+
+		lda level		;level = 0 = endgame
+		bne +
+		jmp endgame
++		cmp #5			;special level every 5 levels
+		beq +
+		cmp #10
+		beq +
+		cmp #15
+		beq +
+		cmp #20			;last level has only amulet and boss
+		bne rndlevel
+		jsr endlevel
+		beq ddor
++		jsr speciallevel
+		beq ddor
+		
+rndlevel	jsr drawrooms
+ddor		!if model = c16 {
+		lda tempflag	;just redrawing the wall and rooms?
+		bne dddd
+		rts}
+dddd		jsr drawdoors
+
+		lda #0		;put the player
+		tay
+		sta (player),y
+		jsr putstairs
+		jsr putitems
+		jsr putmonsters
+		jsr reveal
+		
+		
+		lda sr1		;save current PRNG value 
+		sta mapseed
+		lda sr1+1
+		sta mapseed+1
+		lda sr2 
+		sta mapseed+2
+		lda sr2+1
+		sta mapseed+3
+		
+;show appropriate message
+	
+		jsr new_message
+		lda level
+		cmp #1
+		beq welcome
+		cmp #20
+		beq darkonelev
+		cmp #21
+		beq challengelev
+		lda yend
+		bne uplev
+		lda #<downleveltxt
+		ldy #>downleveltxt
+		jsr load_print_string
+		beq +
+
+		
+uplev		lda #<upleveltxt
+		ldy #>upleveltxt
+		jsr load_print_string
++		lda level
+		jsr print_num
+-		jsr scroll_message
+		jmp print_status ;rts
+
+welcome		lda yend
+		bne uplev
+		lda #<welcometxt
+		ldy #>welcometxt
+		jsr load_print_string
+		beq -			;branch always
+		
+darkonelev	lda #<darkoneleveltxt
+		ldy #>darkoneleveltxt
+		jsr load_print_string
+		beq -
+		
+challengelev	lda #<challengeleveltxt
+		ldy #>challengeleveltxt
+		jsr load_print_string
+		beq -
+		;MAZE COMPLETED
+		
+;---------------------------------------------
+;---------------------------------------------
+
+endgame		lda #0
+		sta CURSORCOLOR
+		jsr print_clear
+
+		sei
+	
+		lda #<titleirq 	;set up interrupt vector
+		sta $314
+		lda #>titleirq	;in main.a
+		sta $315
+		lda #$f2	;rasterline
+		sta rasterline
+		
+!if model = c64 {						
+		lda dead	;just showing the status screen
+		beq +
+		jmp skipendpic
+ending				
++		lda #$80
+		ora yend
+		sta yend	;for bmi in jsr status/menu.a
+		lda #21
+		sta $d018
+		sta endpicflag
+		lda #0
+		sta $d016	;38 columns for scrolling text
+		lda #BLACK
+		sta BO_COLOR
+		lda #$a8	;two's complement countdown
+		sta num1
+		ldx #1
+		lda darkone
+		bne +
+		dex
++		lda challenge
+		beq +
+		ldx #2
++		stx temps	;ending result 0 normal, 1 darkone killed, 2 challenge
+		lda endBGcol,x
+		sta BG_COLOR
+		lda #<endgame1txt
+		ldy #>endgame1txt
+		dex 
+		bmi setendtxt
+		lda #<endgame2txt
+		ldy #>endgame2txt
+		dex 
+		bmi setendtxt
+		lda #<endgame3txt
+		ldy #>endgame3txt
+setendtxt	sta zpa
+		sty zpb
+		lda #<end1dat	;get graphic string
+		ldy #>end1dat
+		ldx temps
+		beq endgo
+		lda #<end2dat
+		ldy #>end2dat
+		dex 
+		beq endgo
+		lda #<end3dat
+		ldy #>end3dat
+endgo		jsr load_string ;in display.a
+		ldy #0
+-		lda (stringlo),y
+		beq +		;0=end of data
+		jsr CHROUT
+		cmp #$22	;did we just print a quote?
+		bne noqte
+		lda #0
+		sta $d4		;then turn off quote mode flag		
+noqte		jsr add1fd
+		bcc -		;branch always
+		
++		ldy #39		;color text area
+		ldx temps
+		lda endTXTcol,x
+-		sta $dbc0,y
+		dey
+		bpl -
+		jsr initsfx	;mutes sid			
+		sei		;CHROUT uses cli
+	
+		lda #<endirq 	;set up interrupt vector
+		sta $314
+		lda #>endirq	;below
+		sta $315
+
+		lda #1
+		sta $d019
+		sta $d01a
+		lda $dc0d 
+		lda $dd0d
+		jsr ingamemusic	;init music
+		cli
+		
+		jsr trap_button	;picture displayed, await fire button
+end1loop	jsr check_button_tap
+		bne end1loop
+		
+		sei
+		jsr initsfx
+		lda #$08
+		sta $d016	;return to 40 col
+		lda #21
+		sta $d018
+		lda #<titleirq
+		sta $314
+		lda #>titleirq
+		sta $315
+		jsr print_clear ;cli
+skipendpic	lda #22
+		sta $d018
+}
+		lda #0
+		sta BO_COLOR
+		sta BG_COLOR
+		cli
+		lda #$92
+		jsr CHROUT	;inverse off, if set from displaying picture
+		jsr statusend	;menu.a; prints status screen
+		ldx #16		;position cursor
+		ldy #13
+		clc
+		jsr PLOT
+		lda #RED
+		sta CURSORCOLOR
+		lda dead
+		bne died
+		
+		lda #<victorytxt
+		ldy #>victorytxt
+		ldx temps
+		beq outcome
+		lda #<truevictorytxt
+		ldy #>truevictorytxt
+		dex
+		beq outcome
+		lda #<godvictorytxt
+		ldy #>godvictorytxt
+		
+outcome		jsr load_print_string
+		ldx #18		;position cursor
+		ldy #13
+		clc
+		jsr PLOT
+		lda loaded
+		jsr print_num
+		lda #<loadstxt
+		ldy #>loadstxt
+		jsr load_print_string
+
+		jsr trap_button
+end2loop	jsr check_button_tap
+		bne end2loop
+		jmp reinit
+		
+died		lda #<diedtxt
+		ldy #>diedtxt
+		jmp outcome		
+
+!if model = c64 {
+
+endirq		lda #1		;two splits for bottom screen scroll
+		sta $d019
+		lda #$12
+		sta $d012
+		lda #22
+		sta $d018
+		lda scrollreg
+		sta $d016
+		lda #<endirq2 	;set up interrupt vector
+		sta $314
+		lda #>endirq2	;in main.a
+		sta $315
+		jsr read_joy
+		jsr ingamemusic+3	;double time!
+		jsr ingamemusic+3
+skipendsfx	jmp $ea31
+		
+		
+endirq2		ldx #1
+		stx $d019
+		lda #$f2
+		sta $d012
+		lda #$00
+		sta $d016
+		lda #21
+		sta $d018
+		lda #<endirq
+		sta $314
+		lda #>endirq	;in main.a
+		sta $315
+		lda #0
+		sta vblank
+		
+		
+scroll		lda scrollreg
+		sec
+		sbc #01		;r.bayliss
+		and #$07
+		sta scrollreg
+		bcs endscroll
+		ldx #$00
+scrollstep	lda TEXTSCREEN+$3c1,x
+		sta TEXTSCREEN+$3c0,x
+		inx
+		cpx #40
+		bne scrollstep
+		ldy #0
+		lda (zpa),y
+		bmi +		;end character?
+		tay
+		jsr add1
+-		sty TEXTSCREEN+$3e7
+endscroll	jmp irqreturn
+
++		cmp #$ff 
+		beq endofscroll
+		cmp #$fe
+		beq showblank
+		cmp #$80	;end of blank countdown
+		beq showcredits 
+		sec
+		sbc #1
+		sta (zpa),y
+endofscroll	ldy #$20
+		bne -
+showcredits	lda #<creditstxt
+		sta zpa
+		lda #>creditstxt
+		sta zpb
+		jmp endofscroll
+showblank	lda #<num1
+		sta zpa
+		lda #>num1
+		sta zpb
+		jmp endofscroll
+}
+;----------------------------------------------
+		
+drawrooms	lda #7		;lots of rooms for challenge level
+		ldx level
+		cpx #21
+		beq +
+		lda #5		;carve out 5 random rooms
++		sta tempmonster	;
+nextroom	ldx #6
+		jsr rndrange	;rnd(0-5)
+		asl		;0,2,4,6,8,10
+		tay		;upper left corner y
+		ldx #12
+		jsr rndrange	;rnd(0-12)
+		asl
+		tax
+		jsr locateroom
+		dec tempmonster
+		lda tempmonster
+		bne nextroom
+		clc		;algorithm rarely
+				;makes a room in the lower right
+		ldx #2		;so we stack the deck ;-)
+		jsr rndrange
+		adc #9 
+		asl
+		tax
+		ldy #10
+		
+locateroom	lda #$54
+		sta zpmapa
+		lda #>MAPSCREEN
+		sta zpmapb
+rmadd40		cpy #0
+		beq +
+-		lda #40
+		clc
+		adc zpmapa
+		sta zpmapa
+		lda #0
+		adc zpmapb
+		sta zpmapb
+		dey
+		bne -
++		cpx #0
+		beq +
+-		lda #1
+		clc
+		adc zpmapa
+		sta zpmapa
+		lda #0
+		adc zpmapb
+		sta zpmapb
+		dex
+		bne -		;now zpa and zpb point to 
+				;upper left corner of room
++		lda tempz
+		bne +		;room has set width
+		ldx #3
+		jsr rndrange	;rnd(0-3)
+		tay		;now between 1-4
+		iny
+		tya
+		asl
++		sta tempmonster+1
+		inc tempmonster+1
+		lda tempundead
+		bne +
+		jsr rndrange	;x is still 3
+		tax
+		inx
+		txa 
+		asl 
++		sta tempx
+		tax 
+		
+		ldy #0
+drawroomloop2	lda #ROOMFLOOR
+drawroomloop	sta (zpmapa),y
+		iny
+		dex
+		bpl drawroomloop
+		ldy #0
+		lda #40
+		clc
+		adc zpmapa
+		sta zpmapa
+		bcc +
+		inc zpmapb
++		ldx tempx
+		dec tempmonster+1
+		lda tempmonster+1
+		bne drawroomloop2
+		rts
+		
+;----------------------------------------------
+;On floors 5,10,15,21 special room layouts 
+speciallevel 
+		lsr		;create index from level
+		lsr		;5/4 = 1, 10/4 = 2, 15/4 = 3, 21/4 = 4
+		tax
+		dex		;1-4 -> 0-3
+		stx option+1
+		jsr rnd
+		tay
+		lda #<specialleveltable
+		cpy #$80	;50% chance one level has specific item type
+		bcc +
+		inc option	;indicates single item type
+		adc #62		;63 (carry set)
++		ldy #>specialleveltable ;
+		bcc +
+		iny
++		sta zpc
+		sty zpd
+		
+		lda #0
+-		dex
+		bmi +
+		clc
+		adc #21
+		bne -
++		sta num2
+		
+drawspecialrooms		
+		ldy num2
+		lda (zpc),y		;pointer into room descriptions
+		beq donespecialroom	;zero byte ended
+		sta tempz		;store table details into zp for draw
+		iny
+		lda (zpc),y
+		sta tempundead
+		iny 
+		lda (zpc),y
+		tax
+		iny
+		lda (zpc),y
+		iny
+		sty num2
+		tay
+		jsr locateroom		;draw room
+		beq drawspecialrooms	;uncd
+donespecialroom	rts
+
+mapcenter = MAPSCREEN + $1a3
+
+endlevel	lda #<endleveltable
+		sta zpc
+		lda #>endleveltable
+		sta zpd
+		lda #0
+		sta num2
+		dec option	;flag so items don't spawn
+		jsr drawspecialrooms
+		lda #7		;amulet
+		sta flooritems
+		lda #<mapcenter	;center of map
+		sta flooritems+5
+		lda #>mapcenter
+		sta flooritems+6
+		lda #AMULET	;char
+		sta mapcenter
+		lda #0
+		rts
+;----------------------------------------------
+;Generic routines to add 1 or to add 40 to zpa/zpb or zpc/zpd
+			
+add40		clc
+		lda zpa		;add 40 to zp pointer
+		adc #40
+		jmp add0
+		
+add40fd		clc
+		lda zpc		;add 40 to zp pointer
+		adc #40
+		jmp add0fd		
+			
+add1		lda #1
+adda		clc		;add 1 to zp pointer
+		adc zpa
+add0		sta zpa			
+		lda zpb
+		adc #0
+		sta zpb
+		rts
+			
+add1fd		lda #1
+addafd		clc		;add 1 to zp pointer
+		adc zpc
+add0fd		sta zpc			
+		lda zpd
+		adc #0
+		sta zpd
+		rts
+		
+;----------------------------------------------
+;Find room/hall transitions and put doors there
+drawdoors	lda #$54
+		sta zpc
+		lda #>MAPSCREEN
+		sta zpd
+		lda #9
+		sta tempa
+newdoorrow	ldx #16
+		ldy #0
+nextdoorspot	lda (zpc),y
+		cmp #ROOMFLOOR
+		bne contdoors
+		jsr checkfordoors
+contdoors	dex
+		bne controw
+		dec tempa
+		lda tempa
+		beq donedoors
+		clc
+		lda zpc
+		adc #50
+		sta zpc
+		jsr add0fd
+		jmp newdoorrow
+controw		jsr add1fd
+		jsr add1fd
+		jmp nextdoorspot
+donedoors	rts
+			
+checkfordoors	jsr moveup	;is there a blank space next
+		jsr checkdoor
+		jsr movedown
+		jsr checkdoor
+		jsr moveleft
+		jsr checkdoor
+		jsr moveright
+checkdoor	lda (zpa),y	;to a room space?
+		cmp #FLOOR	;put a door there
+		bne +
+		lda #CLOSEDDOOR
+		sta (zpa),y			
++		rts
+			
+;----------------------------------------------
+;Put stairs/altar/shop in level
+
+putstairs	lda level
+		cmp #19		;second to last level stairs in corner
+		bne +
+		lda yend
+		bne upye	;unless we're going back up
+		lda #STAIRS		
+		sta MAPSCREEN + $54
+-		rts
++		cmp #20		;last level, no stairs, no altar (opened when amulet is retrieved in menu.a)
+		beq -
+		cmp #21		;challenge level, no stairs. game ends upon defeat of boss.
+		beq -
+		ldx #0
+		ldy #0
+upye		jsr find_empty
+		lda zpa		;location odd or even?
+		lsr	
+		bcs upye	;odd location can cause starting location on next level to be trapped
+		lda #STAIRS
+		sta (zpa),y
+		lda level
+		and #%00000001
+		bne noaltar	;altar on even number floors only
+alte		jsr find_empty
+		lda zpa
+		lsr
+		bcs alte	;altar has same odd=in a wall problem, if sacing amulet
+		lda #ALTAR
+  		sta (zpa),y
+noaltar		jsr rnd
+		cmp #$26	;shop chance
+		bcc +
+		rts
+		
++		jsr find_empty	;add a shop
+		lda #SHOP
+		sta (zpa),y
+		lda #1
+		sta shop_flag	;use inventory routines on the shop inventory area
+		jsr prepare_item_pointer
+		lda #2
+		ldx #4		;get shop type
+		jsr rndrange
+		sta shop_type
+		cmp #0
+		beq arrowshop
+		cmp #1
+		beq rationshop
+		cmp #2
+		beq gearshop
+		jmp potionshop
+		
+arrowshop	ldy #0
+		lda #5		;bow identifier
+		sta (itemlo),y
+		lda level
+		pha		;preserve
+		lsr 
+		iny
+		iny
+		sta (itemlo),y	;bow power half of dungeon level
+		iny
+		lda #$ff
+		sta (itemlo),y	;not a slaying bow
+		iny
+		lda #1
+		sta (itemlo),y	;bow identified
+		pla
+		asl 		;bow price level * 2 + 20
+		clc
+		adc #20
+		sta shop_price
+		lda #5
+		jsr adda	;set reference to item after bow
+		ldx #0		;three piles of arrow after the bow
+-		ldy #0	
+		lda #8		;arrow, inv.a
+		sta (itemlo),y
+		iny
+		lda #5		;five arrows a bundle
+		sta (itemlo),y
+		lda level
+		lsr		;arrow price 10 + level * 3/4
+		lsr		;level * 3/4 = (level/4)*3
+		sta tempx
+		clc
+		adc tempx
+		adc tempx
+		adc #10
+		sta shop_price+1,x
+		lda #5
+		jsr adda	;width of table
+		inx
+		cpx #4
+		bne -
+		jmp fill_shop	;'fill' remainer with empty slots 
+		
+rationshop	ldx #0		;count to 5
+-		ldy #0	
+		lda #6		;ration
+		sta (itemlo),y
+		lda level
+		lsr		;food price 30 + level + level/4
+		lsr
+		clc
+		adc level
+		adc #30
+		sta shop_price,x
+		lda #5
+		jsr adda	;width of table
+		inx
+		cpx #5
+		bne -
+		jmp fill_shop	
+	
+gearshop	ldx #0		;5 items
+gearshoploop	stx tempa
+-		ldy #0	
+		jsr rnd
+		and #1		;0 or 1, weapon or armor
+		sta (itemlo),y
+		sta gs_mod+1	;self-mod, remember if weapon or armor
+		lda #8
+		sec
+		sbc (itemlo),y	;range of weapons 0-7, armor 0-6
+		tax
+		jsr rndrange
+		iny
+		sta (itemlo),y	;weapon/armor type
+		tax
+		lda equipment_price,x
+		sta tempz	;accumulate price based on power
+		
+		ldx #6		;power = ((level + rnd(0-5)) - rnd(10))/2
+		jsr rndrange	;0-5
+		adc level	;+level
+		sta tempy
+		ldx #11
+		jsr rndrange
+		sta tempx
+		lda tempy
+		sec
+		sbc tempx	;-(0-10)
+		bpl +
+		lda #0		;negatives return 0
++		lsr		;div2
+		iny
+		sta (zpc),y
+		asl
+		adc tempz	;price = price + bonus*2
+		sta tempz
+
+		lda #$ff
+		jmp nospecsh	;############
+		
+		jsr rnd
+		bmi +		;50% chance weapon is enchanted
+		lda #$ff
+		bmi nospecsh
++		ldx #10		;one of nine possible enchantments
+		jsr rndrange
+nospecsh	iny
+		sta (itemlo),y
+		cmp #$ff
+		beq nospecprice
+gs_mod		ldx #$A0	;self-modded above
+		beq +		;weapon or armor?
+		clc
+		adc #9		;price table 9 bytes wide
++		tax
+		lda special_price,x
+		clc
+		adc tempz
+		sta tempz
+		
+nospecprice	iny
+		lda #0
+		sta (itemlo),y	;not ident'ed, not cursed
+		lda tempz
+		clc
+		adc level
+		ldx tempa
+		sta shop_price,x
+		lda #5
+		jsr adda	;width of table
+		inx
+		cpx #5
+		beq +
+		jmp gearshoploop
++		jmp fill_shop
+		
+
+potionshop	ldx #0		;count to 5
+potshop_loop	stx tempx
+		ldy #0
+		lda #3		;potion
+		sta (itemlo),y
+		ldx #14
+		jsr rndrange
+		iny
+		sta (itemlo),y
+		tax		;calculate potion price
+		lda spcost,x	;based on spell point cost + level
+		asl		;*2
+		adc level
+		ldx tempx
+		sta shop_price,x
+		ldy #4
+		lda #0		;no ident
+		sta (itemlo),y
+		lda #5
+		jsr adda
+		inx
+		cpx #5
+		bne potshop_loop
+		jmp fill_shop
+		
+
+fill_shop	;ldx #63		;fill remainder of list with $ff, after 5 items
+;		lda #$ff
+;-		sta shop_inventory+(25),x
+;		dex
+;		bpl -
+		rts
+;----------------------------------------------
+
+
+putnextitem     
+		dec tempa
+		lda tempa
+		bne +
+-		rts
+
+
+putitems	;y=0 for all zp pointers in this routine
+		lda challenge
+		bne -		;no items on challenge level
+		ldx #3		;0-2
+		jsr rndrange
+		adc #4		;between 4-6 items on a level
+		sta tempa
++		ldx #1		;only put items in rooms
+		ldy #0
+		jsr find_empty	;find spot on map (zpa)
+		jsr find_open	;find entry on list (zpc), no error trap:list cannot be filled
+		jsr rnd
+		ldx option	;1 = special level with single item type, set above
+		bmi -		;$ff = no items on level 20
+		beq putitemnow
+		ldx option+1		
+		lda speciallevelitems,x
+putitemnow	ldx #8
+-		cmp itemchance,x
+		bcc putit
+		dex
+		bne -		
+		
+putit		cpx #6		;gold or arrows sets carry
+		lda item_char,x	;inv.a
+		sta (zpa),y	;put char on map
+		txa		;item index (weapon,potion,etc)
+		sta (zpc),y	;put on list for floor items
+		sta tempz
+		lda item_range,x
+		bmi putring	;ring has $ff for range	
+		tax
+		bcc notpile	;carry set = pile of gold or arrows
+-		jsr rndrange
+		cmp #0		;no piles of 0
+		beq -
+		adc #1		;no "1 arrows"
+		cpx #20		;pile of gold or arrows?
+		bne +
+		adc level	;piles of gold get bigger with level 
+		lsr
+		beq -		;no piles of 0
++		iny
+		sta (zpc),y
+		bne putlocation ;branch always
+		
+notpile		jsr rndrange	
+		iny
+		sta (zpc),y	;item variety (dagger,bubbling,etc)
+		
+		ldx #6		;power = ((level + rnd(0-5)) - rnd(10))/2
+		jsr rndrange	;0-5
+		adc level	;+level
+		sta tempy
+		ldx #11
+		jsr rndrange
+		sta tempx
+		lda tempy
+		sec
+		sbc tempx	;-(0-10)
+		bpl +
+		lda #0		;negatives return 0
++		lsr		;div2
+		iny
+		sta (zpc),y
+		jsr rnd
+		cmp #50		;20% percent of equipment is special
+		bcs gotspecial
+		lda #$ff 	        
+		bmi nospecial	;returns a bmi=true value for A
+putring		lda #0		;ring always has special
+		iny
+		sta (zpc),y
+		iny
+		sta (zpc),y
+gotspecial	lda tempz	;item type
+		cmp #5		;putting a bow?
+		beq putbow
+		ldx #10		;0-9 of blood, of blindness,etc.	
+		jsr rndrange
+nospecial	iny 
+		sta (zpc),y
+		ldx #$80
+		jsr rnd
+		cmp #25		;~10% of items are cursed
+		bcc +
+		ldx #$0
++		txa
+		iny
+		sta (zpc),y
+putlocation	ldy #5		;put location in last two bytes
+		lda zpa
+		sta (zpc),y
+		iny
+		lda zpb
+		sta (zpc),y
+		jmp putnextitem
+
+putbow		lda level	;slaying power for bow is monster index
+		lsr		;level/2
+		sta tempz	;+
+		lsr		;level/4
+		clc		;=
+		adc tempz	;level*.75
+		sta tempz
+-		ldx #9
+		jsr rndrange	;rnd(0-8)+(level*.75)
+		adc tempz
+		cmp #19
+		bcs -		;if larger than 18 retry
+		bcc nospecial
+		
+		
+;----------------------------------------------
+putmonsters	lda option	;is it the last level?
+		bpl +
+		lda #6		;only one 6 byte monster
+		sta putmloopcmp+1 
+		bne put_monster
++		lda #36		;each level starts with 6 monsters (6*6)
+		sta putmloopcmp+1
+put_monster	jsr prepare_monster_pointer	;in monster.a
+		ldy #0
+putmloop
+		sty putmloopmod+1
+		ldx #0
+		ldy #0
+		jsr find_empty
+		lda option	;bmi = level 20
+		bpl +
+		lda #19		;boss 'dark one'
+		bne putmonsternow
+		
++		lda challenge
+		beq +
+		jsr challengeenemies
+		jmp putmonsternow
+				
+		
++		lda level	;range for monster type based on level
+		ldy yend
+		beq +
+		lda #20		;on way up, any monster possible		
++		sec
+		sbc #1
+		asl
+		tax
+		tay
+		lda monsterrange+1,x
+		tax
+		jsr rndrange	;doesn't change x
+		adc monsterrange,y
+putmonsternow	sta tempmonster
+		tax
+		lda monster_hp,x
+		sta tempmonster+1
+		lda #0
+		sta tempmonster+2
+		ldy #0
+		lda (zpa),y
+		sta tempmonster+3
+		lda zpa
+		sta tempmonster+4
+		lda zpb
+		sta tempmonster+5
+		
+		!if model = c64 {
+			lda tempmonster
+			clc
+			adc #230	;char offset
+			sta (zpa),y
+		}
+		!if model = c16 {
+			lda monster_char,x
+			sta (zpa),y
+		}
+putmloopmod	lda #$a0		;modified
+		sta tempy
+		jsr save_monster	;in monster.a, puts tempy in y and adds 6 to it.
+putmloopcmp	cpy #$a0		;modified
+		bne putmloop
+		rts
+		
+challengeenemies
+		lda god
+		asl		;god number x 2
+		tax
+		lda putmloopmod+1
+		bne +		;first entry, boss enemy
+		lda challenge_monsters,x
+		rts
++		cmp #24		;only 4 enemies including boss
+		beq +
+		inx		;one type of secondary enemy
+		lda challenge_monsters,x
+		rts
++		pla ;pop this jsr, exit from monster creation
+		pla
+		rts
+		
+challenge_monsters
+		!byte 20,18
+		!byte 21,17
+		!byte 22,15
+		!byte 23,16
+		
+;----------------------------------------------		
+find_empty	stx tempy
+
+notempty	lda #$54	;find a random empty spot in the maze to put an object
+		sta zpa		;if tempy <> 0 then look only in rooms
+		lda #>MAPSCREEN
+		sta zpb
+		ldx #16
+		jsr rndrange
+		tax
+		inx		;no zero
+-		jsr add40
+		dex
+		bne -
+		ldx #31
+		jsr rndrange
+		jsr adda
+		lda (zpa),y
+		beq notempty	;player
+		ldx tempy
+		bne +
+		cmp #FLOOR
+		beq empty
++		cmp #ROOMFLOOR
+		bne notempty
+empty		rts
+
+find_open			;find an open spot on the floor list
+		lda #<flooritems
+		sta zpc
+		lda #>flooritems
+		sta zpd
+		ldx #10		;eleven entries in list
+		clc		;ensure carry clear in case addition is skipped
+-		lda (zpc),y
+		bmi foundopen
+		lda #7		;list elements seven bytes wide
+		jsr addafd
+		dex
+		bpl -
+		sec
+foundopen	rts		;carry returns set if list is full
+
+;---------------------------------------
+
+wallgraphics	ldx #0
+		lda char		;graphics on?
+		beq wallsend
+		lda level		;wall tiles change every 5 levels
+		ldy #0
+		cmp #5
+		bcc wallit
+		ldy #8
+		cmp #10
+		bcc wallit
+		ldy #16
+		cmp #15
+		bcc wallit
+		ldy #24
+		cmp #20
+		bcc wallit
+		ldy #32
+
+wallit		lda walltiles,y
+		sta wallchar,x
+		iny
+		inx
+		cpx #8
+		bne wallit
+		
+wallsend	rts
+
+;-----------------------------------------
+
+welcometxt	!pet "Welcome to Katabatia!",0
+downleveltxt	!pet $fe,"climb down to level ",0
+upleveltxt	!pet $fe,"climb up to level ",0
+darkoneleveltxt !pet "This place seems detached from reality",0
+challengeleveltxt
+		!pet "You enter another plane of existence!"
+
+endpicflag 	!byte 0
+
+monstertablema  !byte $2,8,$0,227,$a0,$09
+		!byte $5,5,$0,227,$a2,09	
+		!byte $8,15,0,227,$a4,09	
+		!byte $10,20,0,227,$a6,09
+		
+monsterrange	;what level for what monster type
+		;monster # = 1st # + rnd(2nd # - 1)
+		;on level 20, the only monster is 
+		;the Dark One, who is monster #19
+		!byte 0,2	;0-1   level 1
+		!byte 0,3	;0-2
+		!byte 1,3	;1-3
+		!byte 2,3	;2-4
+		!byte 3,3	;3-5   level 5
+		!byte 4,3     	;4-6
+		!byte 4,4	;4-7
+		!byte 5,4	;5-8
+		!byte 6,4	;6-9
+		!byte 6,5	;6-10  level 10
+		!byte 7,4	;7-10
+		!byte 8,4	;8-11
+		!byte 8,5	;8-12
+		!byte 9,4	;9-13
+		!byte 10,4	;10-13  level 15
+		!byte 13,3	;13-15
+		!byte 13,4	;13-16
+		!byte 14,5	;14-18
+		!byte 16,3	;16-18
+		!byte 0,19	;after amulet, any normal enemies possible on every level
+		
+;Shop price tables
+
+equipment_price	!byte 15,20,25,35,40,50,55,60
+
+special_price   !byte 12,8,20,15,30,30,7,20,15,9
+		!byte 10,20,10,30,15,15,10,10,15,15
+		
+;Special level tables
+;
+;Every 5 floors there is a non-random
+;pattern to the placement of rooms. 
+;there are two possible special level
+;layouts you can get each time.
+;The second layout is more special because
+;it contains only items of a single type.
+;
+;0 = height = end of data, 5 possible custom rooms
+;height+1,width+1,x,y
+;only even numbers
+
+
+specialleveltable
+	!byte 16,2,0,0,     16,2,28,0,    2,24,3,0,     2,24,3,14,    0,0,0,0,    0
+	!byte 6,6,2,2,      6,6,22,8,     2,2,24,2,     2,2,4,12,     12,2,14,2,  0
+	!byte 4,4,0,0,      4,4,26,0,     4,4,0,12,     4,4,26,12,    8,22,4,4,   0
+nextleveltable
+	!byte 8,4,4,4,      8,4,22,4,     2,8,8,4,      2,8,14,10,    2,2,14,7,   0
+	!byte 12,2,8,2,     12,2,20,2,    2,9,10,2,     2,9,10,12,    4,2,14,6,   0
+	!byte 12,2,6,2,     12,2,10,2,    12,2,18,2,    12,2,22,2,    2,26,2,4,   0
+endleveltable
+	!byte 2,2,14,6,      2,2,0,0,     2,2,28,0,     2,2,28,14,    2,2,0,14,   0
+	
+speciallevelitems
+	!byte 180,1,170	;potion,gold,book
+
+specialtable
+	!byte 165,102,240
+	
+itemchance	;item generation
+	!byte 255,230,210,200,175,165,150,135,115
+	     ;WEP,ARM,RNG,POT,BOK,BOW,FOD,ARW,GLD
+	
+endgame1txt	!scr "You squint into the forgotten sun. The fresh smell of flowers greets your nostrils, and your tired limbs forget the labors of battle. The moment of victory is not a feeling of glory; instead, it is a humbling sense of relief. When returned to the Crystal Mount, Laurita will once again bask in the power of the Amulet, and evil will flee the land. However, darkness yet resides in the hellish depths of Katabatia, waiting to renew the attack.... "
+		!byte $fe
+
+endgame2txt	!scr "Evil has been destroyed, and with the  Amulet's power once again beaming from atop the Crystal Mount, it is assured never to return. With absolute peace, the powers of Kings wane and utopian bliss covers the world. The numerous artifacts and tales you return with increase the breadth of magical knowledge. With studies of magic no longer focused on war, but on benefiting humankind, in time, men and women will begin to explore the stars.... "
+		!byte $fe
+
+endgame3txt	!scr "With the power of the Amulet, your god will gain dominance in the heavens. Having proved your worth in the divine test, you are made a general in the celestial army, ready to cloud the sky with the thunder of battle. Your glory is eternal. With the Amulet no longer existing in the human plane, the waxing and waning of evil continues its storied cycles, but warriors burning offerings at your altar are always blessed, and never again does it triumph."
+		!byte $fe
+		
+creditstxt	!scr "Congratulations! You are victorious! Thanks for playing! Programming and Graphics by Jeffrey Ouellette. Music by Andreas Samuelson. Greets to ZZTers and NTSCeners! Tools used:Charpad-Acme-jEdit-HxD-CBM Prg Studio-ICU64-VICE-Frodo   Comments to jddgames@yahoo.com.            The End"
+		!byte $ff
+
+truevictorytxt	!pet "True "
+victorytxt	!pet "Victory in",0
+godvictorytxt	!pet "Ascension in",0
+diedtxt		!pet "Died in",0
+turnstxt	!pet " turns",0
+loadstxt	!pet " loads",0
+			
+
+endBGcol	!byte BLACK, DKGREY, BLUE
+endTXTcol	!byte MEGREY, LTGREY, YELLOW
+		
+!eof
+
+!if model = c16 {
+remake_maze
+		lda sr1		;save current seed
+		sta tempsr1
+		lda sr1+1
+		sta tempsr1+1
+		lda sr2
+		sta tempsr2
+		lda sr2+1
+		sta tempsr2+1
+		
+		lda mapseedlo
+		sta sr1		;remember map seed
+		sta sr2+1
+		lda mapseedhi
+		sta sr1+1
+		sta sr2
+		lda #0		;flag to avoid drawing objects
+		jsr remakeskip
+		
+		lda tempsr1
+		sta sr1
+		lda tempsr1+1
+		sta sr1+1
+		lda tempsr2
+		sta sr2
+		lda tempsr2+1
+		sta sr2+1
+		rts
+}
+
+
+
+
+
+0 PRINT " {gray}{cm pound} {reverse on}{cm +}   {light gray}{cm +}{cm +}{reverse off}{cm pound}{reverse on}{cm +}{gray}   .'{cm +}{reverse off}. {reverse on}{black}{cm +}   {cm pound}      {cm i}{cm o}{cm @}  {reverse off} {reverse on}{cm +}{124}. {reverse off}  {reverse on}{gray}{cm +}  {light gray}{124}     {cm +}{gray}   {124}.{cm +}{reverse off}  {reverse on}{black}{cm +}        '{cm @}{cm c}{reverse off}{cm f}{cm y}{reverse on}{cm f}{reverse off}{cm k} {reverse on}{cm +}  {reverse off} {reverse on}{gray}{cm +}' {light gray}{124}{reverse off}{orange}{cm d}{reverse on}{light gray} {white}   {light gray}  {cm +}{gray}     {reverse off}{124}{124} {reverse on}{black}{cm +} .     {117}{reverse off}{cm i}{cm f}{reverse on}{cm i}{reverse off}.   {reverse on}{124}" {reverse off}{gray}{cm pound}{reverse on}{cm +} {light gray}{cm +} {reverse off}{orange}{cm v}{black}{cm i}{reverse on}{white}{cm f}{110}  {light gray}  {cm +}{gray}   {124}{reverse off}{cm +} {124} {reverse on}{black}{cm +}         {reverse off}{cm v} {cm c}{cm c} {reverse on}{cm +}{124} {reverse off}{reverse on}{gray}{cm +}  {light gray}{124} {reverse off}{black}{cm c}{reverse on}{cm i}{reverse off}{orange}{111}{white}{127}{reverse on}{cm d}{reverse off}{cm v}{black}{cm d}{cm i}{gray}{cm c}{reverse on}{cm +}   {reverse off}{cm +}{124}. {reverse on}{black}{cm +}        {reverse off}{cm b}{reverse on} {cm c}{reverse off}  {cm c}{reverse on}{cm pound}{cm pound} {reverse off}{reverse on}{gray}{cm +}{cm +}{light gray}{cm +} {reverse off}{white}{cm v}{reverse on}{black} {110}{white}{127}{reverse off}{gray}{109}{black}{cm c}{reverse on}{cm i}{cm i}{reverse off}{cm v}{cm i}{reverse on}{gray}{cm f}{cm +}  {124}{reverse off}{cm +}  {reverse on}{black}{cm +}{cm +} {cm pound}    '   {cm c}{reverse off}  {reverse on}{cm +}{124}"{reverse off}{reverse on}{gray}. {light gray}{124}{cm d}{black}{cm k}{cm d}{white}{cm v} {127}{reverse off}{gray}{109}{reverse on}{black} {cm i}{cm i}{cm v}{reverse off}{gray}{cm c}{reverse on}{cm +}  '{reverse off}{cm +}   {reverse on}{black}{cm +}           {reverse off}{cm g} {reverse on}{124}" {reverse off}{reverse on}{gray}{cm +} {light gray}{124}{reverse off}{cm k}{reverse on}{black}{cm c}{reverse off} {reverse on}{white}   {127}{black}{cm k} {reverse off}{cm k}{reverse on} {cm c}{gray}{cm f}  .{reverse off}{cm +} {124} {reverse on}{black}{cm +}     .     {reverse off}: !{reverse on}{124}.{reverse off}{reverse on}{gray}{cm +} {light gray}{cm +}{reverse off}{cm k}{reverse on}{black}{cm f} {reverse off}{cm i}{cm i}{white}{cm c}{reverse on}{cm i}{reverse off} {reverse on}{black}  {cm k}{reverse off}{cm k}{reverse on}{gray}{cm i}{cm +}{cm +} {reverse off}{cm +}{124}  {reverse on}{black}{cm +}          {cm d}{reverse off}  .{reverse on}{124} {reverse off}{reverse on}{gray}{cm +}.{light gray}{124} {reverse off}{cm i}{cm i}{reverse on}{black}{cm i}{cm i}{cm f}  {reverse off}{cm i}{reverse on}{cm b}{cm i}{cm v} {reverse off}{cm i}{cm i}{reverse on}{gray}{cm i}{reverse off}{cm +}. .{reverse on}{black}{cm +}{124} . {cm d}     {reverse off}  .{reverse on}{cm +}{124}.{reverse off}{reverse on}{gray}'  {light gray}{cm +}{cm +}   {cm c}{black}{cm f}         {reverse off}{cm i}{red}{cm i}{cm i}{reverse on}{cm b}{reverse off}{cm f}{reverse on}{black}{124}  {cm d}{reverse off} {reverse on} . {cm d}{reverse off}   :{reverse on}{cm +}{cm pound}"{reverse off} {reverse on}{gray}{cm +}  {light gray}{cm +}{124}{cm +}{124}{124}{reverse off}{cm k}{reverse on}{black}      {red}{cm d}{cm i}{cm i}{cm i}{black}   {red}{cm c}{black}  {cm d}{reverse off} {cm d}{reverse on}   {reverse off}   {reverse on}{cm +}{cm +}"  {reverse off}{reverse on}{cm +}{gray}.{black}{cm +}{gray}{cm +}   {reverse off} {reverse on}  {black}{cm k}     {reverse off}{red}{cm k}{reverse on}{black}      {red}{cm k}{black}{124}{cm d}{reverse off}  {reverse on}{cm v}  {reverse off}{cm k}   {reverse on}{cm +} "  {reverse off}{reverse on}{cm +}{cm +}{reverse off} {reverse on}{gray}{cm +}{cm +}{cm +}  {cm +} {reverse off}{black}{cm c}{reverse on}     {red}{cm k}{black}       {reverse off}{red}{cm k}   {reverse on}{black}  {cm d}{reverse off}  {reverse on}{cm b}{124} "   {reverse off}{reverse on} {cm +}{reverse off} {reverse on}{cm +}{reverse off} {reverse on}{gray}{cm +}..'{cm +}{reverse off}{cm k}{reverse on}{black}      {reverse off}{red}{cm k}{reverse on}{black}     {cm d}{reverse off}{cm v}:  {reverse on}{cm o}{cm i}{reverse off}  {reverse on}{cm +}{cm b} . .  {reverse off}{reverse on}{cm +} {cm +}{reverse off} {reverse on}{cm +}{cm +}{reverse off} {reverse on}{gray}{cm pound}{reverse off}  {cm k}{reverse on}{black}      {reverse off}{red}{cm b}{reverse on}{black}   {cm d}{reverse off}{cm v}    {105}    {reverse on}{cm pound}{124}{124}     {reverse off}{reverse on} .   {cm +}{cm +}{cm +}{cm +}{cm +}{cm +}       {reverse off}{red}{cm b}{reverse on}{black} {cm d}{reverse off}         {reverse on}{cm +}{cm +} {cm pound} '    {reverse off}{reverse on}  {cm pound}             {reverse off}{cm f} {reverse on}{cm i}{reverse off}{red}{cm b}{black}{cm k}     /  {reverse on}{cm +}{cm +}         {reverse off}{reverse on}    {cm pound}{117} {cm b}  {109}      {reverse off}{cm f} :       {reverse on}{cm +}{cm +}{reverse off}/{reverse on}{cm b}   :     {reverse off}{reverse on}     {reverse off}{cm k}{reverse on} {cm c}{reverse off}{cm c}{reverse on}  {cm b}{cm f}  .  {cm c}{reverse off}{cm f}:   / {reverse on}{cm +}{reverse off}/{reverse on} {cm +}    /     {reverse off}{reverse on} .   {cm c}{reverse off}{cm c}{reverse on} {reverse off}{cm f}.{reverse on}{cm i} {reverse off}{cm f}{cm c}{reverse on}   {cm o}{reverse off}{cm v}  {106}   /{reverse on}{cm +}{124}'   {cm pound}       {reverse off}{reverse on}      {reverse off}{cm f}{reverse on}{cm b}{cm i}{reverse off}'   ' {reverse on}{cm i}{reverse off}        {reverse on}{cm +}{cm +}  ' {124}         {reverse off}{reverse on}  .    {cm u}{reverse off}{cm o}{cm o}{cm i}{cm i}{cm i}{cm i}{cm i}{cm i}{cm p}.    {reverse on}{cm +}{cm +}    {124}  {124}{reverse off} {reverse on}       {reverse off}{cm c}{reverse on}{cm i}{cm i}{cm o}{cm o}{cm @}{cm @}   . {cm @}{cm p}{cm i}{reverse off}{cm y}    {reverse on}{cm b}{cm +}  {cm b}'            {cm pound}{cm pound}"
+
+
+
+0 PRINT "{return} {red}use joystick in {pink}port 2{red}. hold fire to{return} display menu. cancel menu by holding{return} left. sacrifice {pink}gold {red}at altars to gain{return} spiritual power. gods identify/uncurse{return} items, and add stats. drop a {pink}potion {red}on{return} an {pink}equipable item {red}to change it. smite{return} the {pink}dark one {red}for true victory...{return}{return}             {reverse on}{green}{sh pound}  {126} {224}{reverse off}{cm i}{cm f}   {light green}{cm d}{reverse on}{cm v}{109}{109}.{reverse off}{cm f}{return}          {red}. {reverse on}{green}{sh pound}     {224}{224}{224}{cm c}{reverse off} {reverse on}{light green}{sh pound}/{109}{109}{109}{109}.{127}{return}              {red}'/{reverse on}{green}  {reverse off} {reverse on}{cm f} {224} {light green}/{109}{109}.{reverse off}{127}{reverse on}{127}{127}{127}{127}{return}           {red}.' {110} {reverse on}{green}  {reverse off} {light gray}{105}{reverse on}{green}{cm f}{224}{224}{127}{light green}{109}{reverse off}{127}{127} {127}{127}{127}{reverse on}{127}{return}          {red}'{117}/{reverse on}{cm b}{reverse off}  {reverse on}{green} {reverse off}{sh pound}{light gray}{106}{green}{cm k} {reverse on}{224}{224}{224}{224}{reverse off}{cm f}  {cm b} {light green}{127}{127}{reverse on}{127}{return}          {red}'{pink}{109}{red}{113}/  {green}{sh pound}  {cm b}{reverse on}{cm b}{224}{224}{224}{224}{224}{reverse off}{cm f}  {cm b}  {light green}{127}{return}         {reverse on}{light gray}{sh pound}{127}{reverse off}{gray}{110}{pink}{109}{red}{107}.  {light gray}{117}{green}{cm i}{cm i}{reverse on}{cm b}{reverse off} {reverse on}{224}{224}{224}{224}{224}{reverse off}{cm f}  {cm k}{return}         {light gray}{127}{reverse on}/{127}{reverse off}{red}''    {light gray}{107}   {reverse on}{green}{cm f}{224}{127}{reverse off} {reverse on}{cm f}{224}{reverse off}{cm f} {reverse on}{cm k}{return}      {white}{099}{102}{114}{gray}{sh @}{light gray}{127}{reverse on}{110}{reverse off}{cm b} {red}.         {reverse on}{green}{224}{127}{reverse off} {reverse on}{cm f}{224} {reverse off}{cm v}{return}          {light gray}{cm o}{cm k}{reverse on}{cm k}{reverse off}        {reverse on}{sh pound}{green}  {cm d}{cm f}{light gray}{127}{return}{return}{return}      {red}program by {pink}jeffrey ouellette{return}       {red}music by {pink}andreas samuelson{return}                 {red}2021 v1.1"
+
+
+1000 PRINT "            {pink}keyboard controls{return}{return}{return}   {white}w        @{return}  a{pink}+{white}d  {pink}or  {white}:{pink}+{white};  {yellow}return {white}= {yellow}space {white}= {yellow}fire{return}   {white}s        /{return}{return} {arrow left} {pink}- {white}cancel{return}{return} u {pink}- {red}use               {white}z {pink}- {red}status{return} {white}t {pink}- {red}throw             {white}* {pink}- {red}rest(1 turn){return} {white}r {pink}- {red}drop        {white}shift * {pink}- {red}rest(rapid){return} {white}p {pink}- {red}pray        {white}shift > {pink}- {red}use stairs{return} {white}m {pink}- {red}message log {white}shift s {pink}- {red}save{return} {white}g {pink}- {red}get item    {white}shift q {pink}- {red}quit{return} {white}. {pink}- {red}get item    {white}shift a {pink}- {red}autopickup{return} {white}e {pink}- {red}enter shop  {white}shift f {pink}- {red}toggle fire{return} {white}c {pink}- {red}close door             prompt{return}{return}{return}       {white}f1 {pink}- {red}change dungeon color{return}       {white}f3 {pink}- {red}change text color{return}       {white}f5 {pink}- {red}toggle graphics/text{return}       {white}f7 {pink}- {red}toggle music/sfx/mute"

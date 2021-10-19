@@ -1,0 +1,225 @@
+         ;*= $1000
+
+counter  = $f9
+pointer  = $fa
+
+         jmp init_sid
+         jmp play
+
+init_sid lda #$00
+         sta pointer
+         sta $d417
+         ldx #$08
+         stx counter
+         inx
+         stx $d40c
+         stx $d405
+         lda #$0b
+         sta $d413
+         lda #$0f
+         sta $d418
+         lda #$24
+         sta $d406
+         sta $d40d
+         sta $d414
+         rts
+
+play     dec counter
+         bne over2
+
+         lda #$08
+         sta counter
+
+         ldy pointer
+
+         ldx voice1,y
+         beq exit1
+
+         lda lo,x
+         sta $d407
+         sta $d400
+         lda hi,x
+         sta $d408
+         sta $d401
+         ldx #$20
+         stx $d404
+         stx $d40b
+         inx
+         stx $d40b
+         stx $d404
+
+exit1    ldx voice2,y
+         beq exit2
+         lda lo,x
+         sta $d40e
+         lda hi,x
+         sta $d40f
+         ldx #$20
+         stx $d412
+         inx
+         stx $d412
+
+exit2    iny
+         cpy #$d2
+         bne over1
+
+         ldy #$00
+over1    sty pointer
+over2    rts
+
+lo       = *-2
+         !byte $70
+         !byte $b4,$fb
+         !byte $47,$98
+         !byte $ed,$47
+         !byte $a7,$0c
+         !byte $77,$e9
+         !byte $61,$e1
+         !byte $68,$f7
+         !byte $8f,$30
+         !byte $da,$8f
+         !byte $4e,$18
+         !byte $ef,$d2
+         !byte $c3,$c3
+         !byte $d1,$ef
+         !byte $1f,$60
+         !byte $b5,$1e
+         !byte $9c,$31
+         !byte $df,$a5
+         !byte $87,$86
+         !byte $a2,$df
+         !byte $3e,$c1
+         !byte $6b
+
+hi       = *-2
+         !byte $04
+         !byte $04,$04
+         !byte $05,$05
+         !byte $05,$06
+         !byte $06,$07
+         !byte $07,$07
+         !byte $08,$08
+         !byte $09,$09
+         !byte $0a,$0b
+         !byte $0b,$0c
+         !byte $0d,$0e
+         !byte $0e,$0f
+         !byte $10,$11
+         !byte $12,$13
+         !byte $15,$16
+         !byte $17,$19
+         !byte $1a,$1c
+         !byte $1d,$1f
+         !byte $21,$23
+         !byte $25,$27
+         !byte $2a,$2c
+         !byte $2f
+
+voice1   !byte $26,$00,$00,$2a
+         !byte $00,$26,$28,$00
+         !byte $00,$21,$00,$00
+         !byte $26,$25,$26,$25
+         !byte $00,$23,$2a,$00
+         !byte $00,$1e,$00,$00
+         !byte $23,$00,$23,$21
+         !byte $00,$1f,$26,$00
+         !byte $00,$1a,$00,$00
+         !byte $1c,$00,$1c,$23
+         !byte $00,$1c,$21,$00
+         !byte $21,$28,$00,$21
+         !byte $26,$00,$00,$2a
+         !byte $00,$26,$28,$00
+         !byte $00,$21,$00,$00
+         !byte $26,$25,$26,$25
+         !byte $00,$23,$2a,$00
+         !byte $00,$1e,$00,$00
+         !byte $23,$00,$23,$21
+         !byte $00,$1f,$26,$00
+         !byte $00,$1a,$00,$00
+         !byte $1c,$00,$1c,$23
+         !byte $00,$1c,$21,$00
+         !byte $21,$28,$00,$21
+         !byte $23,$00,$00,$00
+         !byte $00,$00,$00,$00
+         !byte $23,$21,$00,$1f
+         !byte $26,$00,$00,$00
+         !byte $00,$00,$1a,$00
+         !byte $00,$1a,$00,$1c
+         !byte $1e,$00,$00,$00
+         !byte $00,$00,$00,$00
+         !byte $1e,$1c,$00,$1a
+         !byte $1c,$00,$00,$00
+         !byte $00,$00,$23,$00
+         !byte $00,$1c,$00,$23
+         !byte $21,$00,$21,$28
+         !byte $00,$00,$00,$00
+         !byte $21,$28,$00,$21
+         !byte $1e,$00,$00,$1c
+         !byte $00,$1a,$21,$00
+         !byte $00,$00,$00,$00
+         !byte $23,$00,$00,$21
+         !byte $00,$1f,$26,$00
+         !byte $00,$00,$00,$00
+         !byte $29,$00,$00,$26
+         !byte $00,$29,$28,$00
+         !byte $00,$00,$00,$00
+         !byte $2b,$00,$00,$28
+         !byte $29,$2b,$2a,$00
+         !byte $00,$00,$00,$00
+         !byte $00,$00,$00,$00
+         !byte $00,$00
+
+voice2   !byte $0e,$00,$1a,$0e
+         !byte $00,$1a,$09,$00
+         !byte $15,$09,$00,$15
+         !byte $0b,$00,$17,$0b
+         !byte $00,$17,$06,$00
+         !byte $12,$06,$00,$12
+         !byte $07,$00,$13,$07
+         !byte $00,$13,$02,$00
+         !byte $0e,$02,$00,$0e
+         !byte $04,$00,$10,$04
+         !byte $00,$10,$09,$00
+         !byte $15,$09,$00,$15
+         !byte $0e,$00,$1a,$0e
+         !byte $00,$1a,$09,$00
+         !byte $15,$09,$00,$15
+         !byte $0b,$00,$17,$0b
+         !byte $00,$17,$06,$00
+         !byte $12,$06,$00,$12
+         !byte $07,$00,$13,$07
+         !byte $00,$13,$02,$00
+         !byte $0e,$02,$00,$0e
+         !byte $04,$00,$10,$04
+         !byte $00,$10,$09,$00
+         !byte $15,$09,$00,$15
+         !byte $07,$00,$13,$07
+         !byte $00,$13,$07,$00
+         !byte $13,$07,$00,$13
+         !byte $02,$00,$0e,$02
+         !byte $00,$0e,$02,$00
+         !byte $0e,$02,$00,$0e
+         !byte $0b,$00,$17,$0b
+         !byte $00,$17,$0b,$00
+         !byte $17,$0b,$00,$17
+         !byte $04,$00,$10,$04
+         !byte $00,$10,$04,$00
+         !byte $10,$04,$00,$10
+         !byte $09,$00,$15,$09
+         !byte $00,$15,$09,$00
+         !byte $15,$09,$00,$15
+         !byte $02,$00,$0e,$02
+         !byte $00,$0e,$06,$00
+         !byte $12,$06,$00,$12
+         !byte $07,$00,$13,$07
+         !byte $00,$13,$0a,$00
+         !byte $16,$0a,$00,$16
+         !byte $0a,$00,$16,$0a
+         !byte $00,$16,$0c,$00
+         !byte $18,$0c,$00,$18
+         !byte $0c,$00,$18,$0c
+         !byte $00,$18,$0e,$00
+         !byte $1a,$0e,$00,$1a
+         !byte $0e,$00,$1a,$0e
+         !byte $00,$1a
+

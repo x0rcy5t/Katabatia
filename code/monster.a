@@ -1,0 +1,1005 @@
+;monster control
+;
+;when tempmonster is filled, tempy holds
+;the offset for its location on the list
+;
+;J.Ouellette
+
+-	jmp endgame
+
+monster_turn
+	lda challenge
+	cmp #2
+	beq -
+	ldx #5		;increment steps counter in ram.a
+-	lda #$30	;petscii '0'
+	ldy turns,x
+	iny
+	cpy #$3a
+	beq +		;carry?
+	tya
++	sta turns,x
+	bcc +		;no carry?
+	dex
+	bpl -		;end step counter
+	
++	ldx #0	
+-	lda poison,x	;loop for counters
+	bmi nodec
+	beq nodec	;poison,stun,confusion,might,blind
+	dec poison,x
+	bne +		;zero reached?
+	dec poison,x	;bmi for one time message
++	cpx #0		;poison?
+	bne nodec
+	dec hp		;decrement hp
+	lda hp
+	bne nodec
+	inc dead	;flag
+nodec	inx
+	cpx #5
+	bne -
+	
+	lda blindflag	;equipped item is causing blindness
+	beq +
+	sta blind
+	
+;hungerrate is modified by weapons, and armor.
+;Each loop hungercount = hungerrate and is decremented.
+;When zero, hunger is decremented.
+;Food replenishes hunger.
+;Restorerate and restorecount work similarly for HP/SP.
+;HP/SP not restored when 'starving' or invisible
+	
++	lda hungercount
+	bne noeat
+	lda #0
+	ldx equipped_weapon
+	bmi +
+	jsr find_item
+	ldy #3
+	lda (itemlo),y
+	tax
++	lda hungerrate
+	cpx #6			;weapon of hunger?
+	bne +
+	sec
+	sbc #1
++	clc
+	adc satiation		;from armor/rings
+	sta hungercount
+	lda hunger
+	bne +
+	dec hp
+	bne notdead
+	inc dead
+notdead	jmp noheal
++	dec hunger
+noeat	dec hungercount
+	lda hunger
+	beq noheal
+	lda invisible		;no heal if invisible
+	bne noheal
+	ldx #1
+-	lda restorecount,x	;restore hp and sp
+	bne +
+	lda restorerate,x
+	sta restorecount,x
+	lda hp,x
+	cmp maxhp,x
+	beq +
+	inc hp,x
++	dec restorecount,x
+	dex
+	bpl -
+noheal	lda levelup		;gained a level?
+	beq +
+	lda #<leveluptxt
+	ldy #>leveluptxt
+	jsr load_print_message	;print a message
+	dec levelup		;handling of levelup in hurtmonster below.
++	jsr print_status
+	
+;----------------------------------------------		
+;always save tempy for monster pointer
+
+	jsr prepare_monster_pointer
+	ldy #0	
+nextmonster
+	lda (zpa),y		
+	bpl monster_act		;$ff = inactive list element
+	cmp #$fe		;$fe = end of monster list
+	beq donemonsters
+	tya
+	clc
+	adc #6
+	tay
+	bne nextmonster		;branch always
+donemonsters
+	jmp move_init
+
+monster_act
+	jsr load_monster
+	jsr get_monster_xy
+	jsr get_player_xy	;needs to be reset each loop in case monster flees
+	lda tempmonster+4
+	ldy tempmonster+5
+	jsr load_string		;sets zpa
+	lda tempmonster+2	;load monster's status
+	sta zpa
+	asl
+	sta zpb			;keep track of shifted flag byte between jsrs
+	bcc ckstun
+	lda #1
+	sta tempa
+	jsr hurt_monster
+	bcc psnkill		;poison damage was fatal
+	jsr attemptrecovery	;attempt recovery, returns after lda zpa
+	bcs ckstun		;carry clear = recovered
+	and #%01111111		;clear status flag
+	sta zpa
+ckstun	asl zpb
+	bcc ckconf
+	jsr attemptrecovery	;is stunned, attempt recovery
+	bcs end_monster_turn
+	and #%10111111
+	sta zpa
+ckconf	asl zpb
+	bcc ckblnd
+	jsr attemptrecovery	;is confused
+	bcs moverandomly
+	and #%11011111
+	sta zpa
+ckblnd	asl zpb
+	bcc moveok
+	jsr attemptrecovery	;is blind
+	bcs moveok		;carry set = blind
+	and #%11101111
+	sta zpa
+	bcc moveok
+psnkill	sty tempx
+	lda #<killtxt
+	ldy #>killtxt
+	jsr findnextwordload
+	jsr you_blank_the_monster	;print message outcome, monster.a
+	jsr fire_button_prompt
+	jmp update_monster
+end_monster_turn
+	lda zpa
+	sta tempmonster+2
+	jmp update_monster
+	
+moveok	lda noisy
+	bne chase
+	bcc notblnd
+	beq moverandomly
+	
+notblnd	lda invs		;player invisible?
+	beq +
+	lda tempundead
+	bne chase		;undead chase invisible players
+	beq moverandomly
++	ldx #6			;monster is able to chase
+	jsr playerinxrange	;if player is near 
+	bcs moverandomly
+	jsr playerinyrange	;x is the same
+	bcs moverandomly
+chase   asl zpb
+	bcc +
+	jsr attemptrecovery	;is afraid
+	bcs moveaway		;flee player
+	and #%11110111
+	sta zpa
++	jsr attemptrecovery	;chance not to chase
+	bcs movetowards
+
+moverandomly
+	lda zpa
+	sta tempmonster+2
+	ldx #4
+	jsr rndrange
+	ldy #0
+	jmp movemonster
+	
+moveaway
+	lda zpa
+	sta tempmonster+2
+	ldx monsterx		;reverse math for chase
+	lda playerx
+	stx playerx
+	sta monsterx
+	ldx monstery
+	lda playery
+	stx playery
+	sta monstery
+	bne noproj		;co-ords never get to 0
+	
+movetowards
+	lda zpa
+	sta tempmonster+2
+	ldx tempmonster
+	lda monster_projectile,x
+	tay			;y hold effect # + 1
+	beq noproj
+	ldx #5			;the range
+	jsr rnd
+	cmp #50			;chance to shoot or move
+	bcs noproj
+	lda playerx
+	cmp monsterx
+	bne +
+	jsr playerinxrange
+	bcc mshoot
++	lda playery
+	cmp monstery
+	bne noproj
+	jsr playerinyrange
+	bcs noproj
+	sec
+mshoot	jmp monster_shoot
+
+noproj	sec
+	lda playerx
+	sbc monsterx
+	beq noxmove
+	bpl tryright
+	sec
+	lda playery
+	sbc monstery
+	beq goleft
+	bpl tryleftdown
+	jsr rnd
+	bmi goleft		;fifty/fifty shot
+goup	lda #0
+	beq movemonster
+goleft	lda #2
+	bne movemonster 	;branch always
+tryleftdown
+	jsr rnd
+	bmi goleft	
+godown	lda #1
+	bne movemonster
+tryright
+	sec
+	lda playery
+	sbc monstery
+	beq goright
+	bpl tryrightdown
+	jsr rnd
+	bmi goup
+goright lda #3
+	bne movemonster
+tryrightdown
+	jsr rnd
+	bmi goright
+	bpl godown
+noxmove sec
+	lda playery
+	sbc monstery
+	bpl godown
+	bmi goup
+	
+movemonster
+	tax
+	bne +
+	jsr moveup		;in move.a
++	dex
+	bne + 
+	jsr movedown
++	dex
+	bne +
+	jsr moveleft
++	dex
+	bne monster_move_done
+	jsr moveright
+
+monster_move_done
+	ldy #0
+	ldx tempmonster
+	lda (zpa),y		;tile monster is moving to
+	bne +
+	jmp monster_attack	;monster runs into player
++	cpx #9			;flytraps don't move
+	beq update_monster
+	cpx #7			;ghosts ingore walls/doors
+	beq ghostmove
+	cmp #WALL 
+	beq update_monster
+	cmp #CLOSEDDOOR
+	bne movem
+	jmp monster_smash	;try to break closed door
+movem	jsr check_for_monsters
+	bcc update_monster	;carry clear, hit another monster
+
+	lda tempmonster+3	;replace uncovered tile
+	sta (zpc),y
+	lda (zpa),y
+	sta tempmonster+3	;new under tile
+	
+	!if model = c64 {
+		lda tempmonster
+		clc
+		adc #230		;char offset
+		sta (zpa),y
+	}
+	!if model = c16 {
+		ldx tempmonster
+		lda monster_char,x
+		sta (zpa),y
+	}
+und	lda zpa
+	sta tempmonster+4
+	lda zpb
+	sta tempmonster+5
+update_monster			;update status flags
+	jsr save_monster
+	jmp nextmonster
+	
+ghostmove
+	cmp #90			;values that the map
+	bcc update_monster	;ghost can't escape
+	cmp #WALL		;ghost's tile is wall when in a wall
+	bne movem
+	lda tempmonster+3	;replace uncovered tile
+	sta (zpc),y
+	lda #WALL
+	sta tempmonster+3	;wall is under
+	sta (zpa),y		;ghost looks like wall unless it attacks
+	bne und
+	
+attemptrecovery
+	jsr rnd
+	cmp #12		;about 1 in 14 chance
+	lda zpa
+	rts
+	
+monster_smash			;monster has a chance
+	lda monster_atk,x	;to break closed door
+	clc
+	adc #10
+	sta tempa
+	jsr rnd
+	cmp tempa
+	bcs smashdone
+	lda #BROKENDOOR
+	sta (zpa),y
+smashdone
+	ldx #0
+	jmp update_monster
+
+;----------------------------------------------	
+monster_shoot	
+	dey			;monster offset +1 to allow 0
+	sty tempa
+	lda #1
+	sta tempx		;player is target
+	lda tempmonster+4	;screen address
+	ldy tempmonster+5	
+	bcs mshoty		;carry set = aligned y-axis
+
+mshotx	ldx #1			;check in range on x axis
+	jsr shoot		;in menu.a
+	bne monstershothit
+	ldx #3
+	lda tempmonster+4	;screen address
+	ldy tempmonster+5
+	jsr shoot
+	bne monstershothit
+	beq endms
+
+mshoty	ldx #0			;check in range on y axis
+	jsr shoot		
+	bne monstershothit
+	ldx #2
+	lda tempmonster+4	;screen address
+	ldy tempmonster+5
+	jsr shoot
+	bne monstershothit
+endms	jmp update_monster
+
+monstershothit
+	lda tempa		;shoot uses tempz,prints use tempa
+	sta tempz		;juggling zp cause I suck
+	jsr new_message		;display.a
+	jsr print_thee
+	jsr print_monster_name	; '  '
+	lda #<shootstxt
+	ldy #>shootstxt
+	jsr load_string
+	jsr finish_message
+	lda #4
+	jsr sfxwait		;player gets shot sound
+	ldx tempmonster
+	lda monster_int,x
+	tax
+	lda tempz
+	ldy #0
+	jsr affect_player	;in effect.a
+	jsr print_message
+	jsr fire_button_prompt
+	bcs endms		;branch always
+	
+	!pet "><0R(Y$+"		
+;----------------------------------------------	
+	
+hurt_monster	;tempa = damage
+	sec
+	lda tempmonster+1	;get hp
+	sbc tempa		;subtract damage
+	sta tempmonster+1
+	bcc kill_monster
+	beq kill_monster
+	rts			;carry set, monster survived
+kill_monster
+	lda #$0a		;monster killed sound
+	jsr sfxwait
+	lda #$ff
+	sta hitflag		;flag in move.a for skipping weapon effects
+	ldy #0
+	lda tempmonster+3	;replace with under tile
+	sta (zpc),y
+exp_gain		
+	ldx tempmonster		;add experience
+	cpx #19			;killed boss
+	bne +
+	inc darkone		;set flag	
++	cpx #20
+	bcc +
+	inc challenge		;now 2, challenge boss killed, end game.
+	lda #0
+	sta darkone		;cancel dark one ending
+	
++	lda monster_exp,x	;exp held as 5 digit petscii
+	tax			;add byte value exp in a loop
+-	ldy #4			;point to the 1's column
+nxdi	lda exp,y		
+	clc
+	adc #1
+	cmp #$3a		;overflow?
+	bne +
+	lda #$30		;store zero
+	sta exp,y
+	dey			;next order of magnitude
+	bpl nxdi		;add carry to next digit
++	sta exp,y
+	dex
+	bne -
+	lda explevel
+	cmp #18			;max level
+	bne +
+	jmp nolevel
++	sec			;check for level up
+	lda next+5
+	sbc exp+5
+	lda next+4
+	sbc exp+4
+	lda next+3
+	sbc exp+3
+	lda next+2
+	sbc exp+2
+	lda next+1
+	sbc exp+1
+	lda next+0
+	sbc exp+0
+	bmi golevel		;level up!
+	jmp nolevel
+golevel	lda explevel
+	cmp #16			;next level is 17, level 18 requires 10000 exp
+	bne +
+	inc next		;ten thousands
++       clc
+        adc explevel
+        adc explevel		;level*3 for exptable index
+        inc explevel
+        tax
+        ldy #0
+-       lda exptable,x		;set next exp target
+        sta next+1,y
+        inx
+        iny
+        cpy #3
+        bne -
+        inc levelup		;message flag
+        ldx explevel
+        dex
+ 	lda class
+	beq warup
+	cmp #1
+	beq rogup
+magup	clc			;magician
+	lda mainstat,x
+	adc int
+	sta int
+	lda secondstat,x
+	adc agi
+	sta agi
+	lda thirdstat,x
+	adc str
+	sta str
+	bne hpsp
+warup	clc
+	lda mainstat,x
+	adc str
+	sta str
+	lda secondstat,x
+	adc agi
+	sta agi
+	lda thirdstat,x
+	adc int
+	sta int
+	bne hpsp
+rogup	clc
+	lda mainstat,x
+	adc agi
+	sta agi
+	lda secondstat,x
+	tay
+	adc int
+	sta int
+	tya
+	adc str
+	sta str
+hpsp	lda int			;maxsp = maxsp+int/4
+	lsr			;no clc, rounds up after lsr
+	lsr
+	adc maxsp
+	sta maxsp
+	lda str			;maxhp = maxhp+str/2
+	lsr
+	adc maxhp
+	sta maxhp
+	
+nolevel ldx tempmonster		;track kills
+	inc monster_kills,x
+	lda monster_kills,x
+	cmp #5			;killed five?
+	bne erasemonster	;monsters get stronger for every five you kill
+	lda #0
+	sta monster_kills,x	;reset counter
+	inc monster_atk,x	;upgrade stats
+	inc monster_atk,x
+	inc monster_int,x
+	inc monster_agi,x
+	inc monster_agi,x
+	inc monster_def,x
+	lda monster_atk,x
+	lsr
+	lsr
+	clc
+	adc monster_hp,x	;monster max hp + atk/4
+	bcc +
+	lda #$ff		;max possible hp
++	sta monster_hp,x
+	
+erasemonster
+	lda #$ff
+	ldy tempmonster
+	sta tempmonster		;blank entry
+	sta tempmonster+5	;and location
+	lda #0
+	sta tempmonster+2	;status, no more holding
+	clc			;carry clear, monster died
+	ldx #0
+	rts
+	
+you_blank_the_monster	
+	jsr new_message
+	jsr print_u
+	jsr print_string
+	jsr print_the
+	ldx tempx		;monster
+	jsr mntempx		;"You [verb] the [monster]"
+	lda crit_flag
+	beq +
+	lda #$21		;"!"
+	jsr CHROUT	
+;	lda tempa		;*******************
+;	jsr print_num		;*******************
++	jmp scroll_message	;rts
+	
+	
+print_monster_name
+	ldx tempmonster
+mntempx
+	lda #<monster_name
+	ldy #>monster_name
+	jsr findnextwordload
+	jmp print_string		;rts
+	;rts
+;----------------------------------------------
+		
+monster_attack
+	;to hit the monster: 
+	;d20+agi >= d20+monster_agi
+	;x=tempmonster on entry
+	ldy #0
+	cpx #7			;ghost?
+	bne +
+	lda #GHOST		;if in a wall when attacking,
+	sta (tempmonster+4),y	;becomes visible
++	lda #0
+	sta temps		;no player bonus in next jsr
+	jsr agility_check	;in move.a, returns carry clear if monster hits
+	bcc playerhit
+	lda #0			;flag for successful attack
+	sta tempz
+	jmp playermissed
+playerhit
+	lda #3			;player hit sound
+	jsr sfxwait
+	lda sleep
+	beq +
+	lda #$ff
+	sta sleep		;unstunned
+	
++	lda tempmonster
+	cmp #9			;flytrap?
+	bne +
+	lda #%00000010		;hold flag
+	ora tempmonster+2
+	sta tempmonster+2	
++	lda #0
+	ldx equipped_armor
+	bmi noarmor
+	jsr find_item
+	ldy #1
+	lda (itemlo),y		;base defense
+	iny
+	sec			;+1, so 0 indexed robe has an effect
+	adc (itemlo),y		;bonus
+noarmor
+	sta tempx		;total defense
+	ldx tempmonster
+	lda monster_atk,x	;attack = rnd(1,atk+1) + level/2
+	tax
+	lda level
+	lsr
+	sta lamod+1
+	jsr rndrange		
+lamod	adc #$A0
+	sec 
+	sbc tempx		;subtract defense
+	bcs +
+	lda #0			;no negative
++	sta tempz
+	sec
+	lda hp
+	sbc tempz
+	sta hp
+	beq ack
+	bcs +
+ack	inc dead		;aww :(
++	jsr new_message
+	lda tempz		;no damage
+	beq failhurt		;different message
+	lda #<hitstxt
+	ldy #>hitstxt
+	jmp endmm
+failhurt
+	lda #<mfailtxt
+	ldy #>mfailtxt
+	jmp endmm	
+	
+playermissed
+	lda #2			;miss sound
+	jsr sfxwait
+	jsr new_message
+	lda #<mssstxt
+	ldy #>mssstxt
+endmm	jsr load_print_string
+	jsr print_you		;"The [monster] [hits/misses] you"
+	jsr scroll_message
+	lda tempz		;hit successful
+	beq +			;check for monster special attack
+	ldx tempmonster
+	lda monster_special,x
+	beq +
+	sec
+	sbc #1			;m_s,x = effect + 1
+	tay
+	lda monster_int,x
+	tax
+	tya
+	ldy #1
+	jsr affect_player
+	lda tempa
+	bmi +
+	jsr print_message
++	jmp update_monster	
+;----------------------------------------------
+
+prepare_monster_pointer
+	lda #<monster		;in ram.a
+	sta zpa			;a table of active monsters
+	lda #>monster
+	sta zpb
+	rts
+	
+save_monster
+	jsr prepare_monster_pointer	
+	ldx #0
+	ldy tempy		;recall position in monster list
+-	lda tempmonster,x	;store varibles from temp area
+	sta (zpa),y		;and continue with list
+	iny
+	inx
+	cpx #6			;
+	bne -
+	rts
+	
+load_monster
+	ldx #0
+	sty tempy		;save where we are on monster list
+-	lda (zpa),y		;extract varibles from list
+	sta tempmonster,x	;for easier reference
+	iny
+	inx
+	cpx #6			;six bytes wide
+	bne -
+	ldx tempmonster
+	lda monster_undead,x
+	sta tempundead	
+	ldx tempmonster+4	;load screen address
+	lda tempmonster+5
+	jsr get_object_xy
+	stx monsterx		;return with x,y
+	sty monstery
+	rts			;while using tempmonster, save tempy
+
+;---------------------------------------------
+find_monster	;compare location in list to $0c/$0d
+		;and load monster that matches into
+		;tempmonster. for move.a routines
+	ldy #0
+	clc
+	lda #<monster
+	adc #4
+	sta zpa
+	lda #>monster
+	sta zpb
+fmon
+	lda (zpa),y		
+	cmp zpc	
+	bne +
+	iny
+	lda (zpa),y
+	cmp zpd
+	beq gotim
+	dey
++	tya
+	clc
+	adc #6
+	tay
+	bne fmon		;branch always
+		
+gotim	dey
+	sec
+	lda zpa
+	sbc #4
+	sta zpa
+	lda zpb
+	sbc #0
+	sta zpb
+	jsr load_monster
+	rts
+
+;----------------------------------------------
+
+playerinxrange		;is the player in x-cood range?
+	stx tempx	;x is range
+	sec
+	lda monsterx
+	sbc playerx
+	bmi negxrange
+	cmp tempx
+	rts 		;bcc in range
+negxrange		;bcs not in range
+	sec
+	lda playerx
+	sbc monsterx
+	cmp tempx
+	rts
+playerinyrange		;is the player in y-cood range?
+	stx tempx	;x is range
+	sec
+	lda monstery
+	sbc playery
+	bmi negyrange
+	cmp tempx
+	rts 		;bcc in range
+negyrange		;bcs not in range
+	sec
+	lda playery
+	sbc monstery
+	cmp tempx
+	rts
+	
+get_player_xy	
+	ldx player
+	lda player+1
+	jsr get_object_xy
+	stx playerx
+	sty playery	
+	rts
+	
+get_monster_xy
+	ldx tempmonster+4
+	lda tempmonster+5
+	jsr get_object_xy
+	stx monsterx
+	sty monstery
+	rts
+		
+get_object_xy
+	stx temps		;x hold low byte of object address
+	sec			;a holds hi byte
+	sbc #>MAPSCREEN		;'screen' now starts at $0
+	sta tempa
+	ldx #0
+	ldy #0
+	lda temps
+yloop	sec
+	sbc #40
+	sta tempr
+	lda tempa
+	sbc #0
+	bcc findx		;tempx/tempa is less than 40
+	sta tempa
+	lda tempr
+	sta temps
+	iny
+	bne yloop		;branch always
+findx	sec
+	lda temps
+	sbc #1
+	bcc foundx
+	sta temps
+	inx
+	bne findx		;branch always
+foundx	rts			;x and y return in x and y
+
+;-----------------------------------------
+
+killtxt !pet "kill",0
+hittxt 	!pet "hit",0
+failtxt !pet "fail to harm",0
+misstxt	!pet "miss",0
+		
+
+hitstxt !pet $f9,$f1," hits",0  ;"The [monster]" ...
+mssstxt !pet $f9,$f1," misses",0
+mfailtxt
+	!pet $f9,$f1," doesn't hurt",0
+leveluptxt
+	!pet $fe,"feel more experienced",0
+shootstxt
+	!pet " shoots! ",0
+	
+
+;monster tables
+	
+monster_name
+	!pet "slime",0
+	!pet "kestrel",0
+	!pet "emu",0
+	!pet "rattlesnake",0	;poisons
+	!pet "satyr",0		;confuses
+	!pet "aquator",0	;damages/destroys armor
+	!pet "ice monster",0	;stun shot
+	!pet "ghost",0		;undead
+	!pet "wizard",0		;lightning shot
+	!pet "flytrap",0	;traps adjacent player, poison projectile
+	!pet "centaur",0	;shoots arrow
+	!pet "manticore",0	;stun projectile
+	!pet "vampire",0	;undead, steals life
+	!pet "ogre",0
+	!pet "baba-yaga",0	;confuses
+	!pet "warlock",0	;death attack, undead
+	!pet "kraken",0		;blind projectile, poisons
+	!pet "hecatonchires",0
+	!pet "dragon",0		;flame attack
+	!pet "Dark One",0	;lightning shot,damages armor
+	!pet "Ancient Wyrm",0	;flame shot
+	!pet "Demon King",0	;stun shot,poisons
+	!pet "Queen of the Dead",0;undead,confusion projectile
+	!pet "Unnamable One",0	;death projectile,teleports player
+
+monster_hp_base
+	!byte 6,8,12,10,14,12,15,20,22,18,36,35,40,50,40,45,60,80,70,175,200,200,200,200
+monster_atk_base
+	!byte 4,5,6,7,8,9,10,11,12,13,16,16,19,21,17,17,26,31,20,40,50,55,60,55
+monster_int_base
+	!byte 1,1,1,1,3,3,5,10,10,1,6,10,3,5,15,15,8,12,16,18,20,18,18,18	
+monster_agi_base
+	!byte 1,3,4,4,4,3,4,4,5,8,8,9,10,9,13,11,14,12,14,16,18,22,18,18
+monster_def_base
+	!byte 0,1,1,2,3,4,4,4,2,5,5,6,5,8,8,4,10,12,8,15,18,16,15,16
+
+;special attack, effect+1 for use in effect.a, 0 = no special attack
+monster_special
+	!byte 0,0,0,3,5,15,0,0,0,0,0,0,17,0,5,12,3,0,0,15,0,3,0,10
+monster_projectile
+	!byte 0,0,0,0,0,0,1,0,11,3,16,1,0,0,0,0,7,0,4,11,4,1,5,12
+	
+monster_undead	;1 immune to status, bless/heal hurts, sees invisible
+		;$ff immune, bless/heal doesn't hurt, sees invisible
+	!byte 0,0,0,0,0,0,$ff,1,0,0,0,0,1,0,0,1,0,0,0,1,$ff,$ff,1,$ff
+monster_exp
+	!byte 6,8,10,16,25,37,45,70,75,85,95,108,120,124,140,175,200,210,220,250,0,0,0,0
+;	!byte 255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255,255
+exptable=*-3
+
+exptab		;byte $30,$30,$33	;30, hard coded in init.a
+		!byte $30,$31,$32	;right most column is tens
+		!byte $30,$32,$38	;280
+		!byte $30,$35,$30	;500
+		!byte $30,$38,$30	;800
+		!byte $31,$31,$31	;1110
+		!byte $31,$35,$30	;1500
+		!byte $32,$30,$30	;2000
+		!byte $32,$35,$30	;2500
+		!byte $33,$31,$30	;3100
+		!byte $33,$38,$30	;3800
+		!byte $34,$34,$35	;4450
+		!byte $35,$32,$33	;5230
+		!byte $36,$30,$35	;6050
+		!byte $37,$39,$30	;7900
+		!byte $38,$39,$32	;8920
+		!byte $30,$30,$30	;10000
+		!byte $30,$30,$30	;xxxxx
+
+classconvert	!byte 2,1,0
+
+;amount added to stats each level
+;
+;class    mainstat     2nd       3rd
+;warrior    str        agi       int
+;rogue      agi      int/str	
+;magician   int        agi       str
+;
+mainstat 	!byte 1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+secondstat 	!byte 1,1,1,1,0,1,0,1,0,1,1,1,0,1,1,0,1,1,1
+thirdstat 	!byte 1,0,1,0,1,1,0,1,0,1,0,0,1,0,1,0,1,0,1
+					
+!if model = c16 {
+monster_char
+	!scr "skerSaIgwFCbWHD"
+	!byte 28 ;british pound sign
+}
+
+
+
+!eof
+
+
+exptab		;byte $30,$30,$33	;30, hard coded in init.a
+		!byte $30,$31,$32	;right most column is tens
+		!byte $30,$32,$38	;280
+		!byte $30,$35,$30	;500
+		!byte $30,$38,$30	;800
+		!byte $31,$31,$31	;1110
+		!byte $31,$35,$30	;1500
+		!byte $32,$30,$30	;2000
+		!byte $32,$35,$30	;2500
+		!byte $33,$31,$30	;3100
+		!byte $33,$38,$30	;3800
+		!byte $34,$34,$35	;4450
+		!byte $35,$32,$33	;5230
+		!byte $36,$30,$35	;6050
+		!byte $37,$39,$30	;7900
+		!byte $38,$39,$32	;8920
+		!byte $30,$30,$30	;10000
+		!byte $30,$30,$30	;xxxxx
+
+
+mainstat 	!byte 0,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1
+secondstat 	!byte 0,1,1,1,1,0,1,0,1,0,1,0,1,0,1,1,0,1,1,1
+thirdstat 	!byte 0,1,1,1,0,1,0,0,1,0,1,0,0,1,0,1,0,1,0,1		
+		
+warrior
+   1  2  3  4  5  6  7  8  9  10 11 12 13 14 15  16  17  18
+ s:03|04|05|06|07|08|09|10|11|12|14|15|16|17| 18| 19| 20| 21|
+ a:02|02|03|03|04|05|05|06|07|07|08|09|09|10| 11| 12| 13| 14|
+ i:02|02|02|03|03|04|04|05|05|06|06|07|07|08| 09| 09| 10| 11|
+hp:25|22|24|27|31|35|40|45|51|58|65|73|81|90|100|110|121|132|
+sp:00|02|03|05|07|09|11|14|17|20|23|27|31|35| 40| 45| 50| 56|
